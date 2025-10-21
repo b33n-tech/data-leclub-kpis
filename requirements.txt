@@ -5,4 +5,4 @@ python-docx
 fpdf2
 plotly
 tabulate
-st_aggrid
+st-aggrid

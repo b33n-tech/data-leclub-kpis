@@ -2,9 +2,10 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta
 import io
+import plotly.graph_objects as go
 import plotly.express as px
 
-st.title("Dashboard Marketplace & Incubateur (V3 Interactive)")
+st.title("Dashboard Marketplace & Incubateur (V4 Interactive avec menus)")
 
 # --- Fonction utilitaire ---
 def read_file_safe(uploaded_file, expected_columns=None):
@@ -47,7 +48,7 @@ def read_file_safe(uploaded_file, expected_columns=None):
 
     return df
 
-# --- Upload des fichiers ---
+# --- Upload fichiers ---
 st.sidebar.header("Uploader les fichiers")
 file_users = st.sidebar.file_uploader("Noms persos", type=["csv","xlsx"])
 file_entreprises = st.sidebar.file_uploader("Entreprises données", type=["csv","xlsx"])
@@ -84,18 +85,12 @@ if not df_users.empty and not df_entreprises.empty and not df_mises.empty and no
 
     # --- Sidebar filtres ---
     st.sidebar.header("Filtres dynamiques")
-    
-    # CAR/SUM
-    car_options = ["Tout"] + sorted(df_globale["CAR/SUM (territorial)"].dropna().unique().tolist())
-    selected_car = st.sidebar.selectbox("Filtrer par CAR/SUM", car_options)
-    
-    # Incubateur
-    inc_options = ["Tout"] + sorted(df_globale["Incubateur territorial"].dropna().unique().tolist())
-    selected_inc = st.sidebar.selectbox("Filtrer par Incubateur", inc_options)
-
-    # Trimestre
-    trimestre_options = ["Tout"] + sorted(df_mises["Trimestre"].dropna().unique().tolist())
-    selected_trimestre = st.sidebar.selectbox("Filtrer par Trimestre", trimestre_options)
+    car_options = ["Tout"] + sorted(df_globale["CAR/SUM (territorial)"].dropna().unique())
+    selected_car = st.sidebar.selectbox("CAR/SUM", car_options)
+    inc_options = ["Tout"] + sorted(df_globale["Incubateur territorial"].dropna().unique())
+    selected_inc = st.sidebar.selectbox("Incubateur", inc_options)
+    trimestre_options = ["Tout"] + sorted(df_mises["Trimestre"].dropna().unique())
+    selected_trimestre = st.sidebar.selectbox("Trimestre", trimestre_options)
 
     # --- Application des filtres ---
     df_globale_filtered = df_globale.copy()
@@ -103,11 +98,12 @@ if not df_users.empty and not df_entreprises.empty and not df_mises.empty and no
         df_globale_filtered = df_globale_filtered[df_globale_filtered["CAR/SUM (territorial)"] == selected_car]
     if selected_inc != "Tout":
         df_globale_filtered = df_globale_filtered[df_globale_filtered["Incubateur territorial"] == selected_inc]
+
     df_mises_filtered = df_mises.copy()
     if selected_trimestre != "Tout":
         df_mises_filtered = df_mises_filtered[df_mises_filtered["Trimestre"] == selected_trimestre]
 
-    # --- KPIs dynamiques ---
+    # --- KPIs ---
     st.header("KPIs Dynamiques")
     demandes_total = len(df_mises_filtered)
     profils_total = len(df_globale_filtered)
@@ -120,62 +116,79 @@ if not df_users.empty and not df_entreprises.empty and not df_mises.empty and no
     kpi2.metric("Profils filtrés", profils_total)
     kpi3.metric("Profils connectés ce mois", profils_connectes)
 
-    # --- Marketplace ---
-    st.header("Marketplace")
-
+    # --- Marketplace : menu interactif ---
     if not df_mises_filtered.empty:
-        fig_statut = px.histogram(
-            df_mises_filtered,
-            x="Statut des mises en relation à date",
-            title="Statut des mises en relation",
-            text_auto=True
+        status_counts = df_mises_filtered["Statut des mises en relation à date"].value_counts()
+        fig = go.Figure()
+        for status in status_counts.index:
+            fig.add_trace(go.Bar(
+                x=[status],
+                y=[status_counts[status]],
+                name=status
+            ))
+        # Menu dropdown intégré
+        fig.update_layout(
+            title="Marketplace : Statut des mises en relation",
+            updatemenus=[dict(
+                buttons=[
+                    dict(label=st,
+                         method="update",
+                         args=[{"visible":[s==st for s in status_counts.index]}])
+                    for st in status_counts.index
+                ] + [dict(label="Tous", method="update", args=[{"visible":[True]*len(status_counts)}])]
+            )]
         )
-        st.plotly_chart(fig_statut, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True)
 
+        # Trimestriel
         trimestriel = df_mises_filtered.groupby("Trimestre").size().reset_index(name="Nombre de demandes")
         if not trimestriel.empty:
-            fig_trimestriel = px.bar(
-                trimestriel,
-                x="Trimestre",
-                y="Nombre de demandes",
-                title="Répartition trimestrielle",
-                text="Nombre de demandes"
-            )
-            st.plotly_chart(fig_trimestriel, use_container_width=True)
+            fig_tri = px.bar(trimestriel, x="Trimestre", y="Nombre de demandes", title="Répartition trimestrielle")
+            st.plotly_chart(fig_tri, use_container_width=True)
 
-        taux_df = pd.DataFrame({
-            "Indicateur": ["Go Between", "RDV réalisés"],
-            "Taux (%)": [
-                pd.to_numeric(df_mises_filtered.get("Taux de conversion goBetween", pd.Series([0])), errors="coerce").mean(),
-                pd.to_numeric(df_mises_filtered.get("Taux de conversion RDV réalisé", pd.Series([0])), errors="coerce").mean()
-            ]
-        })
-        fig_taux = px.bar(
-            taux_df,
-            x="Indicateur",
-            y="Taux (%)",
-            title="Taux de conversion moyen",
-            text="Taux (%)"
-        )
-        st.plotly_chart(fig_taux, use_container_width=True)
-
-    # --- Complétion profils ---
-    st.header("Complétion des profils (Base Globale)")
-    
+    # --- Complétion profils : menu interactif ---
     if not df_globale_filtered.empty:
         # Profils personnels
-        persos_count = df_globale_filtered["Profil personnel Le Club"].value_counts().reset_index()
-        persos_count.columns = ["Statut", "Nombre"]
-        if not persos_count.empty:
-            fig_persos = px.bar(persos_count, x="Statut", y="Nombre", title="Profils personnels", text="Nombre")
-            st.plotly_chart(fig_persos, use_container_width=True)
+        persos_count = df_globale_filtered["Profil personnel Le Club"].value_counts()
+        fig_persos = go.Figure()
+        for st_name in persos_count.index:
+            fig_persos.add_trace(go.Bar(
+                x=[st_name],
+                y=[persos_count[st_name]],
+                name=st_name
+            ))
+        fig_persos.update_layout(
+            title="Complétion Profils personnels",
+            updatemenus=[dict(
+                buttons=[dict(label=name,
+                              method="update",
+                              args=[{"visible":[n==name for n in persos_count.index]}])
+                         for name in persos_count.index] +
+                        [dict(label="Tous", method="update", args=[{"visible":[True]*len(persos_count)}])]
+            )]
+        )
+        st.plotly_chart(fig_persos, use_container_width=True)
 
         # Profils sociétés
-        societes_count = df_globale_filtered["Profil sociétés Le Club"].value_counts().reset_index()
-        societes_count.columns = ["Statut", "Nombre"]
-        if not societes_count.empty:
-            fig_societes = px.bar(societes_count, x="Statut", y="Nombre", title="Profils sociétés", text="Nombre")
-            st.plotly_chart(fig_societes, use_container_width=True)
+        societes_count = df_globale_filtered["Profil sociétés Le Club"].value_counts()
+        fig_soc = go.Figure()
+        for st_name in societes_count.index:
+            fig_soc.add_trace(go.Bar(
+                x=[st_name],
+                y=[societes_count[st_name]],
+                name=st_name
+            ))
+        fig_soc.update_layout(
+            title="Complétion Profils sociétés",
+            updatemenus=[dict(
+                buttons=[dict(label=name,
+                              method="update",
+                              args=[{"visible":[n==name for n in societes_count.index]}])
+                         for name in societes_count.index] +
+                        [dict(label="Tous", method="update", args=[{"visible":[True]*len(societes_count)}])]
+            )]
+        )
+        st.plotly_chart(fig_soc, use_container_width=True)
 
 else:
     st.info("Veuillez uploader tous les fichiers correctement pour générer les KPIs.")

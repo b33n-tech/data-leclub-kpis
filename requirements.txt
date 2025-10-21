@@ -1,9 +1,8 @@
 streamlit
 pandas
 openpyxl
-python-docx 
+python-docx
 fpdf2
 plotly
 tabulate
-tempfile
-xlrd
+

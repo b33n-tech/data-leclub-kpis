@@ -5,11 +5,8 @@ import io
 
 st.title("Dashboard Marketplace & Incubateur")
 
-# --- Fonction utilitaire pour lire CSV/XLSX robustement ---
+# --- Fonction utilitaire ultra-robuste ---
 def read_file_safe(uploaded_file, expected_columns=None):
-    """
-    Lit un fichier CSV ou XLSX uploadé, gère encodages, fichiers vides et colonnes manquantes.
-    """
     if uploaded_file is None or uploaded_file.size == 0:
         st.error(f"Le fichier {uploaded_file.name if uploaded_file else 'inconnu'} est vide !")
         return pd.DataFrame()
@@ -17,30 +14,31 @@ def read_file_safe(uploaded_file, expected_columns=None):
     content = uploaded_file.read()
     buffer = io.BytesIO(content)
 
-    try:
-        if uploaded_file.name.endswith(".csv"):
+    df = None
+    if uploaded_file.name.endswith(".csv"):
+        encodings = ["utf-8", "utf-8-sig", "ISO-8859-1"]
+        for enc in encodings:
             try:
-                df = pd.read_csv(buffer, encoding="utf-8")
-            except UnicodeDecodeError:
-                try:
-                    buffer.seek(0)
-                    df = pd.read_csv(buffer, encoding="utf-8-sig")
-                except UnicodeDecodeError:
-                    buffer.seek(0)
-                    df = pd.read_csv(buffer, encoding="ISO-8859-1", engine="python", errors="replace")
-        elif uploaded_file.name.endswith(".xlsx"):
-            df = pd.read_excel(buffer)
-        else:
-            st.error(f"Format de fichier non supporté : {uploaded_file.name}")
+                buffer.seek(0)
+                df = pd.read_csv(buffer, encoding=enc, engine="python")
+                break
+            except Exception:
+                df = None
+        if df is None:
+            st.error(f"Impossible de lire le fichier {uploaded_file.name} avec tous les encodages")
             return pd.DataFrame()
-    except Exception as e:
-        st.error(f"Impossible de lire le fichier {uploaded_file.name} : {e}")
+    elif uploaded_file.name.endswith(".xlsx"):
+        buffer.seek(0)
+        try:
+            df = pd.read_excel(buffer)
+        except Exception as e:
+            st.error(f"Impossible de lire le fichier {uploaded_file.name} : {e}")
+            return pd.DataFrame()
+    else:
+        st.error(f"Format de fichier non supporté : {uploaded_file.name}")
         return pd.DataFrame()
 
-    # Nettoyage colonnes
     df.columns = df.columns.str.strip()
-
-    # Vérification colonnes attendues
     if expected_columns:
         missing_cols = [c for c in expected_columns if c not in df.columns]
         if missing_cols:

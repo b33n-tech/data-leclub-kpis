@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 import io
 import plotly.express as px
 
-st.title("Dashboard Marketplace & Incubateur (V2 Interactive)")
+st.title("Dashboard Marketplace & Incubateur (V2 Interactive & Robuste)")
 
 # --- Fonction utilitaire ---
 def read_file_safe(uploaded_file, expected_columns=None):
@@ -39,6 +39,7 @@ def read_file_safe(uploaded_file, expected_columns=None):
         st.error(f"Format de fichier non supporté : {uploaded_file.name}")
         return pd.DataFrame()
 
+    # Nettoyage colonnes
     df.columns = df.columns.str.strip()
     if expected_columns:
         missing_cols = [c for c in expected_columns if c not in df.columns]
@@ -75,7 +76,7 @@ df_globale = read_file_safe(file_base_globale, expected_columns=cols_globale)
 # --- Vérification ---
 if not df_users.empty and not df_entreprises.empty and not df_mises.empty and not df_globale.empty:
 
-    # --- Datas globales ---
+    # --- KPIs globaux ---
     st.header("KPIs Globaux")
     demandes_total = len(df_mises)
     profils_total = len(df_users)
@@ -92,38 +93,43 @@ if not df_users.empty and not df_entreprises.empty and not df_mises.empty and no
 
     # --- Marketplace ---
     st.header("Marketplace")
-
+    
     # Dates & Trimestre
-    df_mises["Dates simples"] = pd.to_datetime(df_mises["Dates simples"], format="%Y-%m", errors="coerce")
-    df_mises["Trimestre"] = df_mises["Dates simples"].dt.to_period("Q").astype(str)  # ⚡ conversion en str
+    if "Dates simples" in df_mises.columns:
+        df_mises["Dates simples"] = pd.to_datetime(df_mises["Dates simples"], format="%Y-%m", errors="coerce")
+        df_mises["Trimestre"] = df_mises["Dates simples"].dt.to_period("Q").astype(str)
+    else:
+        df_mises["Trimestre"] = pd.Series(dtype=str)
 
-    # Graphique : statut mises en relation
-    fig_statut = px.histogram(
-        df_mises,
-        x="Statut des mises en relation à date",
-        title="Répartition des statuts des mises en relation",
-        labels={"count": "Nombre"},
-        text_auto=True
-    )
-    st.plotly_chart(fig_statut, use_container_width=True)
+    # Statut mises en relation
+    if "Statut des mises en relation à date" in df_mises.columns:
+        fig_statut = px.histogram(
+            df_mises,
+            x="Statut des mises en relation à date",
+            title="Répartition des statuts des mises en relation",
+            labels={"count": "Nombre"},
+            text_auto=True
+        )
+        st.plotly_chart(fig_statut, use_container_width=True)
 
-    # Graphique : Répartition trimestrielle
-    trimestriel = df_mises.groupby("Trimestre").size().reset_index(name="Nombre de demandes")
-    fig_trimestriel = px.bar(
-        trimestriel,
-        x="Trimestre",
-        y="Nombre de demandes",
-        title="Répartition trimestrielle des demandes",
-        text="Nombre de demandes"
-    )
-    st.plotly_chart(fig_trimestriel, use_container_width=True)
+    # Répartition trimestrielle
+    if not df_mises["Trimestre"].empty:
+        trimestriel = df_mises.groupby("Trimestre").size().reset_index(name="Nombre de demandes")
+        fig_trimestriel = px.bar(
+            trimestriel,
+            x="Trimestre",
+            y="Nombre de demandes",
+            title="Répartition trimestrielle des demandes",
+            text="Nombre de demandes"
+        )
+        st.plotly_chart(fig_trimestriel, use_container_width=True)
 
-    # Graphique : taux conversion Go Between et RDV
+    # Taux de conversion
     taux_df = pd.DataFrame({
         "Indicateur": ["Go Between", "RDV réalisés"],
         "Taux (%)": [
-            pd.to_numeric(df_mises["Taux de conversion goBetween"], errors="coerce").mean(),
-            pd.to_numeric(df_mises["Taux de conversion RDV réalisé"], errors="coerce").mean()
+            pd.to_numeric(df_mises.get("Taux de conversion goBetween", pd.Series([0])), errors="coerce").mean(),
+            pd.to_numeric(df_mises.get("Taux de conversion RDV réalisé", pd.Series([0])), errors="coerce").mean()
         ]
     })
     fig_taux = px.bar(
@@ -138,50 +144,58 @@ if not df_users.empty and not df_entreprises.empty and not df_mises.empty and no
     # --- Profils persos & Sociétés ---
     st.header("Profils persos & Sociétés")
     
-    # Graphique : statut profils persos
-    fig_users_statut = px.pie(
-        df_users,
-        names="Statut",
-        title="Répartition des statuts profils persos"
-    )
-    st.plotly_chart(fig_users_statut, use_container_width=True)
+    if "Statut" in df_users.columns:
+        fig_users_statut = px.pie(
+            df_users,
+            names="Statut",
+            title="Répartition des statuts profils persos"
+        )
+        st.plotly_chart(fig_users_statut, use_container_width=True)
 
-    # Graphique : statut profils sociétés
-    fig_entreprises_statut = px.pie(
-        df_entreprises,
-        names="Statut",
-        title="Répartition des statuts profils sociétés"
-    )
-    st.plotly_chart(fig_entreprises_statut, use_container_width=True)
+    if "Statut" in df_entreprises.columns:
+        fig_entreprises_statut = px.pie(
+            df_entreprises,
+            names="Statut",
+            title="Répartition des statuts profils sociétés"
+        )
+        st.plotly_chart(fig_entreprises_statut, use_container_width=True)
 
     # --- Complétion des profils ---
     st.header("Complétion des profils (Base Globale)")
 
-    # Vue globale : profils personnels
-    persos_count = df_globale["Profil personnel Le Club"].value_counts().reset_index().rename(
-        columns={"index": "Statut", "Profil personnel Le Club": "Nombre"}
-    )
-    fig_complet_persos = px.bar(
-        persos_count,
-        x="Statut",
-        y="Nombre",
-        title="Complétion profils personnels",
-        text="Nombre"
-    )
-    st.plotly_chart(fig_complet_persos, use_container_width=True)
+    # Profils personnels
+    if "Profil personnel Le Club" in df_globale.columns:
+        df_globale["Profil personnel Le Club"] = df_globale["Profil personnel Le Club"].astype(str).str.strip()
+        persos_count = df_globale["Profil personnel Le Club"].value_counts().reset_index()
+        persos_count.columns = ["Statut", "Nombre"]
+        if not persos_count.empty:
+            fig_complet_persos = px.bar(
+                persos_count,
+                x="Statut",
+                y="Nombre",
+                title="Complétion profils personnels",
+                text="Nombre"
+            )
+            st.plotly_chart(fig_complet_persos, use_container_width=True)
+        else:
+            st.info("Aucun profil personnel à afficher.")
 
-    # Vue globale : profils sociétés
-    societes_count = df_globale["Profil sociétés Le Club"].value_counts().reset_index().rename(
-        columns={"index": "Statut", "Profil sociétés Le Club": "Nombre"}
-    )
-    fig_complet_societes = px.bar(
-        societes_count,
-        x="Statut",
-        y="Nombre",
-        title="Complétion profils sociétés",
-        text="Nombre"
-    )
-    st.plotly_chart(fig_complet_societes, use_container_width=True)
+    # Profils sociétés
+    if "Profil sociétés Le Club" in df_globale.columns:
+        df_globale["Profil sociétés Le Club"] = df_globale["Profil sociétés Le Club"].astype(str).str.strip()
+        societes_count = df_globale["Profil sociétés Le Club"].value_counts().reset_index()
+        societes_count.columns = ["Statut", "Nombre"]
+        if not societes_count.empty:
+            fig_complet_societes = px.bar(
+                societes_count,
+                x="Statut",
+                y="Nombre",
+                title="Complétion profils sociétés",
+                text="Nombre"
+            )
+            st.plotly_chart(fig_complet_societes, use_container_width=True)
+        else:
+            st.info("Aucun profil société à afficher.")
 
 else:
     st.info("Veuillez uploader tous les fichiers correctement pour générer les KPIs.")

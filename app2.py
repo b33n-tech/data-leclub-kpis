@@ -161,21 +161,35 @@ if not df_users.empty and not df_entreprises.empty and not df_mises.empty and no
         pdf.set_font("Arial", '', 10)
         pdf.ln(5)
 
-        # Export des KPI
-        pdf.multi_cell(0, 5, f"Demandes de mise en relation: {demandes_total}")
-        pdf.multi_cell(0, 5, f"Profils créés: {profils_total}")
-        pdf.multi_cell(0, 5, f"Profils connectés sur le mois: {profils_connectes}")
-        pdf.ln(3)
+        # KPI principaux
+        for kpi, val in [("Demandes de mise en relation", demandes_total),
+                         ("Profils créés", profils_total),
+                         ("Profils connectés sur le mois", profils_connectes),
+                         ("Go Between validés", go_between_valides),
+                         ("RDV réalisés", rdv_realises),
+                         ("RDV non réalisés", rdv_non_realises),
+                         ("Taux de conversion Go Between (%)", round(taux_go_between,2) if pd.notna(taux_go_between) else 0),
+                         ("Taux de conversion RDV réalisés (%)", round(taux_rdv,2) if pd.notna(taux_rdv) else 0)]:
+            pdf.multi_cell(190, 5, f"{kpi}: {val}".encode('latin-1', 'replace').decode('latin-1'))
 
+        pdf.ln(5)
         # Tables Marketplace
-        pdf.multi_cell(0, 5, "Statut des mises en relation:")
-        pdf.multi_cell(0, 5, tabulate(df_mises.get("Statut des mises en relation à date", pd.Series()).value_counts(), headers="keys", tablefmt="grid"))
-        pdf.ln(3)
-        pdf.multi_cell(0, 5, "Statut profils persos:")
-        pdf.multi_cell(0, 5, tabulate(df_users.get("Statut", pd.Series()).value_counts(), headers="keys", tablefmt="grid"))
-        pdf.ln(3)
-        pdf.multi_cell(0, 5, "Complétion profils globaux:")
-        pdf.multi_cell(0, 5, tabulate(df_globale[["Profil personnel Le Club","Profil sociétés Le Club"]].value_counts(), headers="keys", tablefmt="grid"))
+        pdf.multi_cell(190, 5, "Statut des mises en relation:".encode('latin-1','replace').decode('latin-1'))
+        table_text = tabulate(df_mises.get("Statut des mises en relation à date", pd.Series()).value_counts(), headers="keys", tablefmt="grid")
+        for line in table_text.split("\n"):
+            pdf.multi_cell(190,5,line.encode('latin-1','replace').decode('latin-1'))
+
+        pdf.ln(5)
+        pdf.multi_cell(190, 5, "Statut profils persos:".encode('latin-1','replace').decode('latin-1'))
+        table_text2 = tabulate(df_users.get("Statut", pd.Series()).value_counts(), headers="keys", tablefmt="grid")
+        for line in table_text2.split("\n"):
+            pdf.multi_cell(190,5,line.encode('latin-1','replace').decode('latin-1'))
+
+        pdf.ln(5)
+        pdf.multi_cell(190,5,"Complétion profils globaux:".encode('latin-1','replace').decode('latin-1'))
+        table_text3 = tabulate(df_globale[["Profil personnel Le Club","Profil sociétés Le Club"]].value_counts(), headers="keys", tablefmt="grid")
+        for line in table_text3.split("\n"):
+            pdf.multi_cell(190,5,line.encode('latin-1','replace').decode('latin-1'))
 
         return pdf
 
@@ -183,10 +197,17 @@ if not df_users.empty and not df_entreprises.empty and not df_mises.empty and no
         doc = Document()
         doc.add_heading("Dashboard Marketplace & Incubateur", 0)
         doc.add_heading("Datas globales", level=1)
-        doc.add_paragraph(f"Demandes de mise en relation: {demandes_total}")
-        doc.add_paragraph(f"Profils créés: {profils_total}")
-        doc.add_paragraph(f"Profils connectés sur le mois: {profils_connectes}")
+        for kpi, val in [("Demandes de mise en relation", demandes_total),
+                         ("Profils créés", profils_total),
+                         ("Profils connectés sur le mois", profils_connectes),
+                         ("Go Between validés", go_between_valides),
+                         ("RDV réalisés", rdv_realises),
+                         ("RDV non réalisés", rdv_non_realises),
+                         ("Taux de conversion Go Between (%)", round(taux_go_between,2) if pd.notna(taux_go_between) else 0),
+                         ("Taux de conversion RDV réalisés (%)", round(taux_rdv,2) if pd.notna(taux_rdv) else 0)]:
+            doc.add_paragraph(f"{kpi}: {val}")
 
+        # Tables Marketplace
         doc.add_heading("Statut des mises en relation", level=2)
         table1 = doc.add_table(rows=1, cols=2)
         hdr_cells = table1.rows[0].cells
@@ -208,30 +229,30 @@ if not df_users.empty and not df_entreprises.empty and not df_mises.empty and no
             row_cells[1].text = str(v)
 
         doc.add_heading("Complétion profils globaux", level=2)
-        table3 = doc.add_table(rows=1, cols=2)
+        table3 = doc.add_table(rows=1, cols=3)
         hdr_cells3 = table3.rows[0].cells
-        hdr_cells3[0].text = "Profil personnel Le Club"
-        hdr_cells3[1].text = "Profil sociétés Le Club"
-        for idx, row in df_globale[["Profil personnel Le Club","Profil sociétés Le Club"]].iterrows():
-            row_cells = table3.add_row().cells
-            row_cells[0].text = str(row[0])
-            row_cells[1].text = str(row[1])
-
+        hdr_cells3[0].text = 'Profil personnel'
+        hdr_cells3[1].text = 'Profil société'
+        hdr_cells3[2].text = 'Nombre'
+        for row, count in df_globale[["Profil personnel Le Club","Profil sociétés Le Club"]].value_counts().items():
+            r = table3.add_row().cells
+            r[0].text = str(row[0])
+            r[1].text = str(row[1])
+            r[2].text = str(count)
         return doc
 
-    # --- Boutons de téléchargement ---
     st.subheader("Téléchargements")
     if st.button("Télécharger PDF"):
         pdf = generate_pdf()
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
-            pdf.output(tmp.name)
-            st.download_button("Télécharger PDF", data=open(tmp.name, "rb").read(), file_name="dashboard.pdf")
+        tmp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
+        pdf.output(tmp_file.name)
+        st.download_button("Télécharger PDF", tmp_file.name, file_name="dashboard_kpis.pdf")
 
     if st.button("Télécharger DOCX"):
         doc = generate_docx()
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".docx") as tmp:
-            doc.save(tmp.name)
-            st.download_button("Télécharger DOCX", data=open(tmp.name, "rb").read(), file_name="dashboard.docx")
+        tmp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".docx")
+        doc.save(tmp_file.name)
+        st.download_button("Télécharger DOCX", tmp_file.name, file_name="dashboard_kpis.docx")
 
 else:
     st.info("Veuillez uploader tous les fichiers correctement pour générer les KPIs.")

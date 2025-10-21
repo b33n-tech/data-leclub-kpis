@@ -23,7 +23,6 @@ def read_file_safe(uploaded_file, expected_columns=None):
         for enc in encodings:
             try:
                 buffer.seek(0)
-                # Lecture CSV en devinant le séparateur
                 df = pd.read_csv(buffer, encoding=enc, engine="python", sep=None, skip_blank_lines=True)
                 break
             except Exception:
@@ -130,24 +129,32 @@ if not df_users.empty and not df_entreprises.empty and not df_mises.empty and no
 
     # --- Complétion des profils (Base Globale) ---
     st.header("Complétion des profils")
+
+    # Vue globale
     st.subheader("Vue globale")
     st.table(df_globale.get("Profil personnel Le Club", pd.Series()).value_counts())
     st.table(df_globale.get("Profil sociétés Le Club", pd.Series()).value_counts())
 
+    # Par CAR/SUM
     st.subheader("Par CAR/SUM")
-    st.table(df_globale.groupby("CAR/SUM (territorial)").get("Profil sociétés Le Club", pd.Series()).value_counts())
+    car_value_counts = df_globale.groupby("CAR/SUM (territorial)")["Profil sociétés Le Club"].value_counts()
+    st.table(car_value_counts)
 
+    # Par Incubateur territorial
     st.subheader("Par Incubateur territorial")
-    st.table(df_globale.groupby("Incubateur territorial").get("Profil sociétés Le Club", pd.Series()).value_counts())
+    incub_value_counts = df_globale.groupby("Incubateur territorial")["Profil sociétés Le Club"].value_counts()
+    st.table(incub_value_counts)
 
+    # % complétion incubation individuelle
     st.subheader("% de complétion sur les profils incubation individuelle")
     incubation_indiv = df_globale[df_globale.get("Statut d'incubation", pd.Series()) == "Incubation individuelle"]
-    st.table(
+    incubation_indiv_pct = (
         incubation_indiv.get("Profil sociétés Le Club", pd.Series())
         .value_counts(normalize=True)
         .mul(100)
         .round(2)
     )
+    st.table(incubation_indiv_pct)
 
     # --- Génération PDF/DOCX ---
     def generate_pdf(df_users, df_entreprises, df_mises, df_globale):
@@ -195,19 +202,19 @@ if not df_users.empty and not df_entreprises.empty and not df_mises.empty and no
             row_cells[1].text = str(v)
         return doc
 
-    # --- Boutons téléchargement ---
-    pdf = generate_pdf(df_users, df_entreprises, df_mises, df_globale)
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_pdf:
-        pdf.output(tmp_pdf.name)
-        st.download_button("Télécharger le rapport PDF", tmp_pdf.name,
-                           file_name="Dashboard_KPIs.pdf", mime="application/pdf")
+    # Boutons de téléchargement
+    st.subheader("Téléchargements")
+    if st.button("Télécharger PDF"):
+        pdf = generate_pdf(df_users, df_entreprises, df_mises, df_globale)
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+            pdf.output(tmp.name)
+            st.download_button("Télécharger PDF", data=open(tmp.name, "rb").read(), file_name="dashboard.pdf")
 
-    doc = generate_docx(df_users, df_entreprises, df_mises, df_globale)
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".docx") as tmp_doc:
-        doc.save(tmp_doc.name)
-        st.download_button("Télécharger le rapport Word", tmp_doc.name,
-                           file_name="Dashboard_KPIs.docx",
-                           mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+    if st.button("Télécharger DOCX"):
+        doc = generate_docx(df_users, df_entreprises, df_mises, df_globale)
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".docx") as tmp:
+            doc.save(tmp.name)
+            st.download_button("Télécharger DOCX", data=open(tmp.name, "rb").read(), file_name="dashboard.docx")
 
 else:
     st.info("Veuillez uploader tous les fichiers correctement pour générer les KPIs.")

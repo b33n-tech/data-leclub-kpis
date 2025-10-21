@@ -7,9 +7,10 @@ from fpdf import FPDF
 from docx import Document
 from tabulate import tabulate
 
+st.set_page_config(page_title="Dashboard Marketplace & Incubateur", layout="wide")
 st.title("Dashboard Marketplace & Incubateur")
 
-# --- Fonction utilitaire ultra-robuste ---
+# --- Fonction ultra-robuste pour lire CSV/XLSX ---
 def read_file_safe(uploaded_file, expected_columns=None):
     if uploaded_file is None or uploaded_file.size == 0:
         st.error(f"Le fichier {uploaded_file.name if uploaded_file else 'inconnu'} est vide !")
@@ -17,14 +18,14 @@ def read_file_safe(uploaded_file, expected_columns=None):
 
     content = uploaded_file.read()
     buffer = io.BytesIO(content)
-    df = None
 
+    df = None
     if uploaded_file.name.endswith(".csv"):
         encodings = ["utf-8", "utf-8-sig", "ISO-8859-1"]
         for enc in encodings:
             try:
                 buffer.seek(0)
-                df = pd.read_csv(buffer, encoding=enc, engine="python", sep=None, skip_blank_lines=True)
+                df = pd.read_csv(buffer, encoding=enc, engine="python", on_bad_lines='skip')
                 break
             except Exception:
                 df = None
@@ -34,7 +35,7 @@ def read_file_safe(uploaded_file, expected_columns=None):
     elif uploaded_file.name.endswith(".xlsx"):
         buffer.seek(0)
         try:
-            df = pd.read_excel(buffer)
+            df = pd.read_excel(buffer, engine="openpyxl")
         except Exception as e:
             st.error(f"Impossible de lire le fichier {uploaded_file.name} : {e}")
             return pd.DataFrame()
@@ -46,11 +47,11 @@ def read_file_safe(uploaded_file, expected_columns=None):
     if expected_columns:
         missing_cols = [c for c in expected_columns if c not in df.columns]
         if missing_cols:
-            st.warning(f"Colonnes manquantes dans {uploaded_file.name} : {missing_cols}")
-    
+            st.error(f"Colonnes manquantes dans {uploaded_file.name} : {missing_cols}")
+
     return df
 
-# --- Upload des fichiers ---
+# --- Upload fichiers ---
 st.sidebar.header("Uploader les fichiers")
 file_users = st.sidebar.file_uploader("Noms persos", type=["csv","xlsx"])
 file_entreprises = st.sidebar.file_uploader("Entreprises données", type=["csv","xlsx"])
@@ -75,7 +76,7 @@ df_entreprises = read_file_safe(file_entreprises, expected_columns=cols_entrepri
 df_mises = read_file_safe(file_mises_relation, expected_columns=cols_mises)
 df_globale = read_file_safe(file_base_globale, expected_columns=cols_globale)
 
-# --- Vérification que tous les fichiers sont valides ---
+# --- Vérifier que tous les fichiers sont valides ---
 if not df_users.empty and not df_entreprises.empty and not df_mises.empty and not df_globale.empty:
 
     # --- Datas globales ---
@@ -85,7 +86,7 @@ if not df_users.empty and not df_entreprises.empty and not df_mises.empty and no
     
     today = datetime.today()
     month_ago = today - timedelta(days=30)
-    df_users["Date de dernière connexion"] = pd.to_datetime(df_users.get("Date de dernière connexion", pd.Series()), dayfirst=True, errors="coerce")
+    df_users["Date de dernière connexion"] = pd.to_datetime(df_users["Date de dernière connexion"], dayfirst=True, errors="coerce")
     profils_connectes = df_users[df_users["Date de dernière connexion"] >= month_ago].shape[0]
     
     st.metric("Demandes de mise en relation", demandes_total)
@@ -94,9 +95,13 @@ if not df_users.empty and not df_entreprises.empty and not df_mises.empty and no
 
     # --- Marketplace ---
     st.header("Marketplace")
-    go_between_valides = (df_mises.get("Go between validé", pd.Series()) == "Oui").sum()
-    rdv_realises = pd.to_numeric(df_mises.get("RDV réalisés", pd.Series()), errors="coerce").sum()
-    rdv_non_realises = pd.to_numeric(df_mises.get("Rdv non réalisé", pd.Series()), errors="coerce").sum()
+    df_mises["Go between validé"] = df_mises["Go between validé"].astype(str).str.strip()
+    df_mises["Rdv non réalisé"] = pd.to_numeric(df_mises["Rdv non réalisé"], errors="coerce").fillna(0)
+    df_mises["RDV réalisés"] = pd.to_numeric(df_mises["RDV réalisés"], errors="coerce").fillna(0)
+
+    go_between_valides = (df_mises["Go between validé"].str.lower() == "oui").sum()
+    rdv_realises = df_mises["RDV réalisés"].sum()
+    rdv_non_realises = df_mises["Rdv non réalisé"].sum()
     
     st.subheader("Totaux")
     st.metric("Go Between validés", go_between_valides)
@@ -104,14 +109,15 @@ if not df_users.empty and not df_entreprises.empty and not df_mises.empty and no
     st.metric("RDV non réalisés", rdv_non_realises)
 
     st.subheader("Statut des mises en relation")
-    st.table(df_mises.get("Statut des mises en relation à date", pd.Series()).value_counts())
+    statut_mises_table = df_mises["Statut des mises en relation à date"].astype(str).str.strip().value_counts()
+    st.table(statut_mises_table)
 
-    taux_go_between = pd.to_numeric(df_mises.get("Taux de conversion goBetween", pd.Series()), errors="coerce").mean()
-    taux_rdv = pd.to_numeric(df_mises.get("Taux de conversion RDV réalisé", pd.Series()), errors="coerce").mean()
-    st.metric("Taux de conversion Go Between (%)", round(taux_go_between, 2) if pd.notna(taux_go_between) else 0)
-    st.metric("Taux de conversion RDV réalisés (%)", round(taux_rdv, 2) if pd.notna(taux_rdv) else 0)
+    taux_go_between = pd.to_numeric(df_mises["Taux de conversion goBetween"], errors="coerce").mean()
+    taux_rdv = pd.to_numeric(df_mises["Taux de conversion RDV réalisé"], errors="coerce").mean()
+    st.metric("Taux de conversion Go Between (%)", round(taux_go_between, 2))
+    st.metric("Taux de conversion RDV réalisés (%)", round(taux_rdv, 2))
 
-    df_mises["Dates simples"] = pd.to_datetime(df_mises.get("Dates simples", pd.Series()), format="%Y-%m", errors="coerce")
+    df_mises["Dates simples"] = pd.to_datetime(df_mises["Dates simples"], format="%Y-%m", errors="coerce")
     df_mises["Trimestre"] = df_mises["Dates simples"].dt.to_period("Q")
     trimestriel = df_mises.groupby("Trimestre").size()
     st.subheader("Répartition trimestrielle des demandes")
@@ -123,122 +129,87 @@ if not df_users.empty and not df_entreprises.empty and not df_mises.empty and no
     st.metric("Total profils persos", len(df_users))
 
     st.subheader("Statut profils persos")
-    st.table(df_users.get("Statut", pd.Series()).value_counts())
+    statut_profil_persos = df_users["Statut"].astype(str).str.strip().value_counts()
+    st.table(statut_profil_persos)
 
     st.subheader("Statut profils sociétés")
-    st.table(df_entreprises.get("Statut", pd.Series()).value_counts())
+    statut_profil_societes = df_entreprises["Statut"].astype(str).str.strip().value_counts()
+    st.table(statut_profil_societes)
 
     # --- Complétion des profils ---
     st.header("Complétion des profils")
     st.subheader("Vue globale")
-    st.table(df_globale.get("Profil personnel Le Club", pd.Series()).value_counts())
-    st.table(df_globale.get("Profil sociétés Le Club", pd.Series()).value_counts())
+    profil_persos_counts = df_globale["Profil personnel Le Club"].astype(str).str.strip().value_counts()
+    profil_societes_counts = df_globale["Profil sociétés Le Club"].astype(str).str.strip().value_counts()
+    st.table(profil_persos_counts)
+    st.table(profil_societes_counts)
 
     st.subheader("Par CAR/SUM")
-    car_value_counts = df_globale.groupby("CAR/SUM (territorial)")["Profil sociétés Le Club"].value_counts()
-    st.table(car_value_counts)
+    car_sum_counts = df_globale.groupby("CAR/SUM (territorial)")["Profil sociétés Le Club"].value_counts()
+    st.table(car_sum_counts)
 
     st.subheader("Par Incubateur territorial")
-    incub_value_counts = df_globale.groupby("Incubateur territorial")["Profil sociétés Le Club"].value_counts()
-    st.table(incub_value_counts)
+    incubateur_counts = df_globale.groupby("Incubateur territorial")["Profil sociétés Le Club"].value_counts()
+    st.table(incubateur_counts)
 
     st.subheader("% de complétion sur les profils incubation individuelle")
-    incubation_indiv = df_globale[df_globale.get("Statut d'incubation", pd.Series()) == "Incubation individuelle"]
-    incubation_indiv_pct = (
-        incubation_indiv.get("Profil sociétés Le Club", pd.Series())
-        .value_counts(normalize=True)
-        .mul(100)
-        .round(2)
-    )
-    st.table(incubation_indiv_pct)
+    incubation_indiv = df_globale[df_globale["Statut d'incubation"].astype(str).str.strip() == "Incubation individuelle"]
+    incubation_counts = (incubation_indiv["Profil sociétés Le Club"]
+                         .astype(str)
+                         .str.strip()
+                         .value_counts(normalize=True)
+                         .mul(100)
+                         .round(2))
+    st.table(incubation_counts)
 
-    # --- Génération PDF/DOCX complets ---
+    # --- Génération PDF ---
     def generate_pdf():
         pdf = FPDF()
         pdf.add_page()
-        pdf.set_font("Arial", 'B', 16)
-        pdf.cell(0, 10, "Dashboard Marketplace & Incubateur", ln=True, align='C')
-        pdf.set_font("Arial", '', 10)
-        pdf.ln(5)
+        pdf.set_font("Arial", size=10)
 
-        # KPI principaux
-        for kpi, val in [("Demandes de mise en relation", demandes_total),
-                         ("Profils créés", profils_total),
-                         ("Profils connectés sur le mois", profils_connectes),
-                         ("Go Between validés", go_between_valides),
-                         ("RDV réalisés", rdv_realises),
-                         ("RDV non réalisés", rdv_non_realises),
-                         ("Taux de conversion Go Between (%)", round(taux_go_between,2) if pd.notna(taux_go_between) else 0),
-                         ("Taux de conversion RDV réalisés (%)", round(taux_rdv,2) if pd.notna(taux_rdv) else 0)]:
-            pdf.multi_cell(190, 5, f"{kpi}: {val}".encode('latin-1', 'replace').decode('latin-1'))
+        # Datas globales
+        pdf.multi_cell(0, 5, f"Demandes de mise en relation: {demandes_total}")
+        pdf.multi_cell(0, 5, f"Profils créés: {profils_total}")
+        pdf.multi_cell(0, 5, f"Profils connectés sur le mois: {profils_connectes}\n")
 
-        pdf.ln(5)
-        # Tables Marketplace
-        pdf.multi_cell(190, 5, "Statut des mises en relation:".encode('latin-1','replace').decode('latin-1'))
-        table_text = tabulate(df_mises.get("Statut des mises en relation à date", pd.Series()).value_counts(), headers="keys", tablefmt="grid")
-        for line in table_text.split("\n"):
-            pdf.multi_cell(190,5,line.encode('latin-1','replace').decode('latin-1'))
+        # Statut des mises
+        pdf.multi_cell(0, 5, "Statut des mises en relation:")
+        table_text = tabulate(statut_mises_table.reset_index().values, headers=["Statut","Nombre"], tablefmt="grid")
+        pdf.multi_cell(0, 5, table_text + "\n")
 
-        pdf.ln(5)
-        pdf.multi_cell(190, 5, "Statut profils persos:".encode('latin-1','replace').decode('latin-1'))
-        table_text2 = tabulate(df_users.get("Statut", pd.Series()).value_counts(), headers="keys", tablefmt="grid")
-        for line in table_text2.split("\n"):
-            pdf.multi_cell(190,5,line.encode('latin-1','replace').decode('latin-1'))
+        # Statut profils persos
+        pdf.multi_cell(0, 5, "Statut profils persos:")
+        table_text2 = tabulate(statut_profil_persos.reset_index().values, headers=["Statut","Nombre"], tablefmt="grid")
+        pdf.multi_cell(0, 5, table_text2 + "\n")
 
-        pdf.ln(5)
-        pdf.multi_cell(190,5,"Complétion profils globaux:".encode('latin-1','replace').decode('latin-1'))
-        table_text3 = tabulate(df_globale[["Profil personnel Le Club","Profil sociétés Le Club"]].value_counts(), headers="keys", tablefmt="grid")
-        for line in table_text3.split("\n"):
-            pdf.multi_cell(190,5,line.encode('latin-1','replace').decode('latin-1'))
+        # Statut profils sociétés
+        pdf.multi_cell(0, 5, "Statut profils sociétés:")
+        table_text3 = tabulate(statut_profil_societes.reset_index().values, headers=["Statut","Nombre"], tablefmt="grid")
+        pdf.multi_cell(0, 5, table_text3 + "\n")
 
         return pdf
 
+    # --- Génération DOCX ---
     def generate_docx():
         doc = Document()
-        doc.add_heading("Dashboard Marketplace & Incubateur", 0)
-        doc.add_heading("Datas globales", level=1)
-        for kpi, val in [("Demandes de mise en relation", demandes_total),
-                         ("Profils créés", profils_total),
-                         ("Profils connectés sur le mois", profils_connectes),
-                         ("Go Between validés", go_between_valides),
-                         ("RDV réalisés", rdv_realises),
-                         ("RDV non réalisés", rdv_non_realises),
-                         ("Taux de conversion Go Between (%)", round(taux_go_between,2) if pd.notna(taux_go_between) else 0),
-                         ("Taux de conversion RDV réalisés (%)", round(taux_rdv,2) if pd.notna(taux_rdv) else 0)]:
-            doc.add_paragraph(f"{kpi}: {val}")
+        doc.add_heading("Dashboard Marketplace & Incubateur", level=1)
 
-        # Tables Marketplace
+        doc.add_heading("Datas globales", level=2)
+        doc.add_paragraph(f"Demandes de mise en relation: {demandes_total}")
+        doc.add_paragraph(f"Profils créés: {profils_total}")
+        doc.add_paragraph(f"Profils connectés sur le mois: {profils_connectes}")
+
         doc.add_heading("Statut des mises en relation", level=2)
-        table1 = doc.add_table(rows=1, cols=2)
-        hdr_cells = table1.rows[0].cells
+        table = doc.add_table(rows=1, cols=2)
+        hdr_cells = table.rows[0].cells
         hdr_cells[0].text = 'Statut'
         hdr_cells[1].text = 'Nombre'
-        for k,v in df_mises.get("Statut des mises en relation à date", pd.Series()).value_counts().items():
-            row_cells = table1.add_row().cells
+        for k, v in statut_mises_table.items():
+            row_cells = table.add_row().cells
             row_cells[0].text = str(k)
             row_cells[1].text = str(v)
 
-        doc.add_heading("Statut profils persos", level=2)
-        table2 = doc.add_table(rows=1, cols=2)
-        hdr_cells2 = table2.rows[0].cells
-        hdr_cells2[0].text = 'Statut'
-        hdr_cells2[1].text = 'Nombre'
-        for k,v in df_users.get("Statut", pd.Series()).value_counts().items():
-            row_cells = table2.add_row().cells
-            row_cells[0].text = str(k)
-            row_cells[1].text = str(v)
-
-        doc.add_heading("Complétion profils globaux", level=2)
-        table3 = doc.add_table(rows=1, cols=3)
-        hdr_cells3 = table3.rows[0].cells
-        hdr_cells3[0].text = 'Profil personnel'
-        hdr_cells3[1].text = 'Profil société'
-        hdr_cells3[2].text = 'Nombre'
-        for row, count in df_globale[["Profil personnel Le Club","Profil sociétés Le Club"]].value_counts().items():
-            r = table3.add_row().cells
-            r[0].text = str(row[0])
-            r[1].text = str(row[1])
-            r[2].text = str(count)
         return doc
 
     st.subheader("Téléchargements")

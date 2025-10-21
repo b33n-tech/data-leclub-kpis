@@ -1,46 +1,51 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta
+import io
 
 st.title("Dashboard Marketplace & Incubateur")
 
-# --- Fonction utilitaire pour lire CSV/XLSX ---
+# --- Fonction utilitaire pour lire CSV/XLSX robustement ---
 def read_file_safe(uploaded_file, expected_columns=None):
     """
-    Lit un fichier CSV ou XLSX uploadé, gère encodages et fichiers vides.
+    Lit un fichier CSV ou XLSX uploadé, gère encodages, fichiers vides et colonnes manquantes.
     """
-    if uploaded_file is None:
+    if uploaded_file is None or uploaded_file.size == 0:
+        st.error(f"Le fichier {uploaded_file.name if uploaded_file else 'inconnu'} est vide !")
         return pd.DataFrame()
-    
-    if uploaded_file.size == 0:
-        st.error(f"Le fichier {uploaded_file.name} est vide !")
-        return pd.DataFrame()
-    
+
+    content = uploaded_file.read()
+    buffer = io.BytesIO(content)
+
     try:
         if uploaded_file.name.endswith(".csv"):
             try:
-                df = pd.read_csv(uploaded_file, encoding="utf-8")
+                df = pd.read_csv(buffer, encoding="utf-8")
             except UnicodeDecodeError:
                 try:
-                    df = pd.read_csv(uploaded_file, encoding="utf-8-sig")
+                    buffer.seek(0)
+                    df = pd.read_csv(buffer, encoding="utf-8-sig")
                 except UnicodeDecodeError:
-                    df = pd.read_csv(uploaded_file, encoding="ISO-8859-1", errors="replace")
+                    buffer.seek(0)
+                    df = pd.read_csv(buffer, encoding="ISO-8859-1", engine="python", errors="replace")
         elif uploaded_file.name.endswith(".xlsx"):
-            df = pd.read_excel(uploaded_file)
+            df = pd.read_excel(buffer)
         else:
             st.error(f"Format de fichier non supporté : {uploaded_file.name}")
             return pd.DataFrame()
-    except pd.errors.EmptyDataError:
-        st.error(f"Le fichier {uploaded_file.name} est vide ou illisible !")
+    except Exception as e:
+        st.error(f"Impossible de lire le fichier {uploaded_file.name} : {e}")
         return pd.DataFrame()
-    
+
+    # Nettoyage colonnes
     df.columns = df.columns.str.strip()
-    
+
+    # Vérification colonnes attendues
     if expected_columns:
         missing_cols = [c for c in expected_columns if c not in df.columns]
         if missing_cols:
             st.error(f"Colonnes manquantes dans {uploaded_file.name} : {missing_cols}")
-    
+
     return df
 
 # --- Upload des fichiers ---
@@ -70,7 +75,7 @@ df_globale = read_file_safe(file_base_globale, expected_columns=cols_globale)
 
 # --- Vérification que tous les fichiers sont valides ---
 if not df_users.empty and not df_entreprises.empty and not df_mises.empty and not df_globale.empty:
-    
+
     # --- Datas globales ---
     st.header("Datas globales")
     demandes_total = len(df_mises)

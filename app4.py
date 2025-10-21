@@ -5,7 +5,7 @@ import io
 import plotly.graph_objects as go
 import plotly.express as px
 
-st.title("Dashboard Marketplace & Incubateur (V5 Interactive)")
+st.title("Dashboard Marketplace & Incubateur (V6 Interactive)")
 
 # --- Fonction utilitaire ---
 def read_file_safe(uploaded_file, expected_columns=None):
@@ -74,50 +74,48 @@ df_globale = read_file_safe(file_base_globale, expected_columns=cols_globale)
 # --- Vérification fichiers ---
 if not df_users.empty and not df_entreprises.empty and not df_mises.empty and not df_globale.empty:
 
-    # --- Nettoyage et conversions ---
+    # --- Nettoyage ---
     df_users["Date de dernière connexion"] = pd.to_datetime(df_users["Date de dernière connexion"], dayfirst=True, errors="coerce")
     df_mises["Dates simples"] = pd.to_datetime(df_mises.get("Dates simples", pd.Series([])), format="%Y-%m", errors="coerce")
     df_mises["Trimestre"] = df_mises["Dates simples"].dt.to_period("Q").astype(str)
     df_globale["Profil personnel Le Club"] = df_globale.get("Profil personnel Le Club", pd.Series([])).astype(str).str.strip()
     df_globale["Profil sociétés Le Club"] = df_globale.get("Profil sociétés Le Club", pd.Series([])).astype(str).str.strip()
 
-    # --- Sidebar filtres globaux ---
-    st.sidebar.header("Filtres globaux")
-    car_options = ["Tout"] + sorted(df_globale["CAR/SUM (territorial)"].dropna().unique())
-    selected_car = st.sidebar.selectbox("CAR/SUM", car_options)
-    inc_options = ["Tout"] + sorted(df_globale["Incubateur territorial"].dropna().unique())
-    selected_inc = st.sidebar.selectbox("Incubateur", inc_options)
-    trimestre_options = ["Tout"] + sorted(df_mises["Trimestre"].dropna().unique())
-    selected_trimestre = st.sidebar.selectbox("Trimestre", trimestre_options)
-
-    # --- Application des filtres globaux ---
-    df_globale_filtered = df_globale.copy()
-    if selected_car != "Tout":
-        df_globale_filtered = df_globale_filtered[df_globale_filtered["CAR/SUM (territorial)"] == selected_car]
-    if selected_inc != "Tout":
-        df_globale_filtered = df_globale_filtered[df_globale_filtered["Incubateur territorial"] == selected_inc]
-
-    df_mises_filtered = df_mises.copy()
-    if selected_trimestre != "Tout":
-        df_mises_filtered = df_mises_filtered[df_mises_filtered["Trimestre"] == selected_trimestre]
-
-    # --- KPIs recalculés ---
-    st.header("KPIs Dynamiques")
-    demandes_total = len(df_mises_filtered)
-    profils_total = len(df_globale_filtered)
-    today = datetime.today()
-    month_ago = today - timedelta(days=30)
-    profils_connectes = df_users[df_users["Date de dernière connexion"] >= month_ago].shape[0]
-    
-    kpi1, kpi2, kpi3 = st.columns(3)
-    kpi1.metric("Demandes de mise en relation", demandes_total)
-    kpi2.metric("Profils filtrés", profils_total)
-    kpi3.metric("Profils connectés ce mois", profils_connectes)
-
-    # --- Marketplace ---
+    # -----------------------------
+    # Marketplace
     st.header("Marketplace")
-    if not df_mises_filtered.empty:
-        status_counts = df_mises_filtered["Statut des mises en relation à date"].value_counts()
+    st.sidebar.subheader("Filtres Marketplace")
+    car_market = ["Tout"] + sorted(df_globale["CAR/SUM (territorial)"].dropna().unique())
+    selected_car_market = st.sidebar.selectbox("CAR/SUM (Marketplace)", car_market, key="car_market")
+    inc_market = ["Tout"] + sorted(df_globale["Incubateur territorial"].dropna().unique())
+    selected_inc_market = st.sidebar.selectbox("Incubateur (Marketplace)", inc_market, key="inc_market")
+    trimestre_market = ["Tout"] + sorted(df_mises["Trimestre"].dropna().unique())
+    selected_trimestre_market = st.sidebar.selectbox("Trimestre (Marketplace)", trimestre_market, key="trimestre_market")
+
+    # Filtrage Marketplace
+    df_mises_market = df_mises.copy()
+    df_globale_market = df_globale.copy()
+    if selected_trimestre_market != "Tout":
+        df_mises_market = df_mises_market[df_mises_market["Trimestre"] == selected_trimestre_market]
+    if selected_car_market != "Tout":
+        df_globale_market = df_globale_market[df_globale_market["CAR/SUM (territorial)"] == selected_car_market]
+    if selected_inc_market != "Tout":
+        df_globale_market = df_globale_market[df_globale_market["Incubateur territorial"] == selected_inc_market]
+
+    # KPIs Marketplace
+    demandes_total = len(df_mises_market)
+    go_between_valides = (df_mises_market["Go between validé"] == "Oui").sum()
+    rdv_realises = df_mises_market["RDV réalisés"].sum()
+    rdv_non_realises = df_mises_market["Rdv non réalisé"].sum()
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Demandes", demandes_total)
+    col2.metric("Go Between validés", go_between_valides)
+    col3.metric("RDV réalisés", rdv_realises)
+    col4.metric("RDV non réalisés", rdv_non_realises)
+
+    # Graphique statut
+    if not df_mises_market.empty:
+        status_counts = df_mises_market["Statut des mises en relation à date"].value_counts()
         fig_market = go.Figure()
         for status in status_counts.index:
             fig_market.add_trace(go.Bar(x=[status], y=[status_counts[status]], name=status))
@@ -133,22 +131,34 @@ if not df_users.empty and not df_entreprises.empty and not df_mises.empty and no
         )
         st.plotly_chart(fig_market, use_container_width=True)
 
-        # Trimestriel
-        trimestriel = df_mises_filtered.groupby("Trimestre").size().reset_index(name="Nombre de demandes")
-        if not trimestriel.empty:
-            fig_tri = px.bar(trimestriel, x="Trimestre", y="Nombre de demandes", title="Répartition trimestrielle")
-            st.plotly_chart(fig_tri, use_container_width=True)
+    # Trimestriel
+    if not df_mises_market.empty:
+        trimestriel = df_mises_market.groupby("Trimestre").size().reset_index(name="Nombre de demandes")
+        fig_tri = px.bar(trimestriel, x="Trimestre", y="Nombre de demandes", title="Répartition trimestrielle")
+        st.plotly_chart(fig_tri, use_container_width=True)
 
-    # --- Complétion Profils ---
-    st.header("Complétion des Profils")
-    if not df_globale_filtered.empty:
-        # Profils personnels
-        persos_count = df_globale_filtered["Profil personnel Le Club"].value_counts()
+    # -----------------------------
+    # Profils personnels
+    st.header("Profils personnels")
+    st.sidebar.subheader("Filtres Profils personnels")
+    car_perso = ["Tout"] + sorted(df_globale["CAR/SUM (territorial)"].dropna().unique())
+    selected_car_perso = st.sidebar.selectbox("CAR/SUM (Profils perso)", car_perso, key="car_perso")
+    inc_perso = ["Tout"] + sorted(df_globale["Incubateur territorial"].dropna().unique())
+    selected_inc_perso = st.sidebar.selectbox("Incubateur (Profils perso)", inc_perso, key="inc_perso")
+
+    df_persos_filtered = df_globale.copy()
+    if selected_car_perso != "Tout":
+        df_persos_filtered = df_persos_filtered[df_persos_filtered["CAR/SUM (territorial)"] == selected_car_perso]
+    if selected_inc_perso != "Tout":
+        df_persos_filtered = df_persos_filtered[df_persos_filtered["Incubateur territorial"] == selected_inc_perso]
+
+    if not df_persos_filtered.empty:
+        persos_count = df_persos_filtered["Profil personnel Le Club"].value_counts()
         fig_persos = go.Figure()
         for st_name in persos_count.index:
             fig_persos.add_trace(go.Bar(x=[st_name], y=[persos_count[st_name]], name=st_name))
         fig_persos.update_layout(
-            title="Profils personnels",
+            title="Complétion Profils personnels",
             updatemenus=[dict(
                 buttons=[dict(label=n,
                               method="update",
@@ -159,13 +169,28 @@ if not df_users.empty and not df_entreprises.empty and not df_mises.empty and no
         )
         st.plotly_chart(fig_persos, use_container_width=True)
 
-        # Profils sociétés
-        societes_count = df_globale_filtered["Profil sociétés Le Club"].value_counts()
+    # -----------------------------
+    # Profils sociétés
+    st.header("Profils sociétés")
+    st.sidebar.subheader("Filtres Profils sociétés")
+    car_soc = ["Tout"] + sorted(df_globale["CAR/SUM (territorial)"].dropna().unique())
+    selected_car_soc = st.sidebar.selectbox("CAR/SUM (Sociétés)", car_soc, key="car_soc")
+    inc_soc = ["Tout"] + sorted(df_globale["Incubateur territorial"].dropna().unique())
+    selected_inc_soc = st.sidebar.selectbox("Incubateur (Sociétés)", inc_soc, key="inc_soc")
+
+    df_soc_filtered = df_globale.copy()
+    if selected_car_soc != "Tout":
+        df_soc_filtered = df_soc_filtered[df_soc_filtered["CAR/SUM (territorial)"] == selected_car_soc]
+    if selected_inc_soc != "Tout":
+        df_soc_filtered = df_soc_filtered[df_soc_filtered["Incubateur territorial"] == selected_inc_soc]
+
+    if not df_soc_filtered.empty:
+        societes_count = df_soc_filtered["Profil sociétés Le Club"].value_counts()
         fig_soc = go.Figure()
         for st_name in societes_count.index:
             fig_soc.add_trace(go.Bar(x=[st_name], y=[societes_count[st_name]], name=st_name))
         fig_soc.update_layout(
-            title="Profils sociétés",
+            title="Complétion Profils sociétés",
             updatemenus=[dict(
                 buttons=[dict(label=n,
                               method="update",

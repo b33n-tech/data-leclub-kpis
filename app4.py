@@ -5,14 +5,13 @@ import io
 import plotly.graph_objects as go
 import plotly.express as px
 
-st.title("Dashboard Marketplace & Incubateur (V4 Interactive avec menus)")
+st.title("Dashboard Marketplace & Incubateur (V5 Interactive)")
 
 # --- Fonction utilitaire ---
 def read_file_safe(uploaded_file, expected_columns=None):
     if uploaded_file is None or uploaded_file.size == 0:
         st.error(f"Le fichier {uploaded_file.name if uploaded_file else 'inconnu'} est vide !")
         return pd.DataFrame()
-
     content = uploaded_file.read()
     buffer = io.BytesIO(content)
 
@@ -45,7 +44,6 @@ def read_file_safe(uploaded_file, expected_columns=None):
         missing_cols = [c for c in expected_columns if c not in df.columns]
         if missing_cols:
             st.error(f"Colonnes manquantes dans {uploaded_file.name} : {missing_cols}")
-
     return df
 
 # --- Upload fichiers ---
@@ -73,7 +71,7 @@ df_entreprises = read_file_safe(file_entreprises, expected_columns=cols_entrepri
 df_mises = read_file_safe(file_mises_relation, expected_columns=cols_mises)
 df_globale = read_file_safe(file_base_globale, expected_columns=cols_globale)
 
-# --- Vérification ---
+# --- Vérification fichiers ---
 if not df_users.empty and not df_entreprises.empty and not df_mises.empty and not df_globale.empty:
 
     # --- Nettoyage et conversions ---
@@ -83,8 +81,8 @@ if not df_users.empty and not df_entreprises.empty and not df_mises.empty and no
     df_globale["Profil personnel Le Club"] = df_globale.get("Profil personnel Le Club", pd.Series([])).astype(str).str.strip()
     df_globale["Profil sociétés Le Club"] = df_globale.get("Profil sociétés Le Club", pd.Series([])).astype(str).str.strip()
 
-    # --- Sidebar filtres ---
-    st.sidebar.header("Filtres dynamiques")
+    # --- Sidebar filtres globaux ---
+    st.sidebar.header("Filtres globaux")
     car_options = ["Tout"] + sorted(df_globale["CAR/SUM (territorial)"].dropna().unique())
     selected_car = st.sidebar.selectbox("CAR/SUM", car_options)
     inc_options = ["Tout"] + sorted(df_globale["Incubateur territorial"].dropna().unique())
@@ -92,7 +90,7 @@ if not df_users.empty and not df_entreprises.empty and not df_mises.empty and no
     trimestre_options = ["Tout"] + sorted(df_mises["Trimestre"].dropna().unique())
     selected_trimestre = st.sidebar.selectbox("Trimestre", trimestre_options)
 
-    # --- Application des filtres ---
+    # --- Application des filtres globaux ---
     df_globale_filtered = df_globale.copy()
     if selected_car != "Tout":
         df_globale_filtered = df_globale_filtered[df_globale_filtered["CAR/SUM (territorial)"] == selected_car]
@@ -103,7 +101,7 @@ if not df_users.empty and not df_entreprises.empty and not df_mises.empty and no
     if selected_trimestre != "Tout":
         df_mises_filtered = df_mises_filtered[df_mises_filtered["Trimestre"] == selected_trimestre]
 
-    # --- KPIs ---
+    # --- KPIs recalculés ---
     st.header("KPIs Dynamiques")
     demandes_total = len(df_mises_filtered)
     profils_total = len(df_globale_filtered)
@@ -116,29 +114,24 @@ if not df_users.empty and not df_entreprises.empty and not df_mises.empty and no
     kpi2.metric("Profils filtrés", profils_total)
     kpi3.metric("Profils connectés ce mois", profils_connectes)
 
-    # --- Marketplace : menu interactif ---
+    # --- Marketplace ---
+    st.header("Marketplace")
     if not df_mises_filtered.empty:
         status_counts = df_mises_filtered["Statut des mises en relation à date"].value_counts()
-        fig = go.Figure()
+        fig_market = go.Figure()
         for status in status_counts.index:
-            fig.add_trace(go.Bar(
-                x=[status],
-                y=[status_counts[status]],
-                name=status
-            ))
-        # Menu dropdown intégré
-        fig.update_layout(
-            title="Marketplace : Statut des mises en relation",
+            fig_market.add_trace(go.Bar(x=[status], y=[status_counts[status]], name=status))
+        fig_market.update_layout(
+            title="Statut des mises en relation",
             updatemenus=[dict(
-                buttons=[
-                    dict(label=st,
-                         method="update",
-                         args=[{"visible":[s==st for s in status_counts.index]}])
-                    for st in status_counts.index
-                ] + [dict(label="Tous", method="update", args=[{"visible":[True]*len(status_counts)}])]
+                buttons=[dict(label=s,
+                              method="update",
+                              args=[{"visible":[st==s for st in status_counts.index]}])
+                         for s in status_counts.index] +
+                        [dict(label="Tous", method="update", args=[{"visible":[True]*len(status_counts)}])]
             )]
         )
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig_market, use_container_width=True)
 
         # Trimestriel
         trimestriel = df_mises_filtered.groupby("Trimestre").size().reset_index(name="Nombre de demandes")
@@ -146,24 +139,21 @@ if not df_users.empty and not df_entreprises.empty and not df_mises.empty and no
             fig_tri = px.bar(trimestriel, x="Trimestre", y="Nombre de demandes", title="Répartition trimestrielle")
             st.plotly_chart(fig_tri, use_container_width=True)
 
-    # --- Complétion profils : menu interactif ---
+    # --- Complétion Profils ---
+    st.header("Complétion des Profils")
     if not df_globale_filtered.empty:
         # Profils personnels
         persos_count = df_globale_filtered["Profil personnel Le Club"].value_counts()
         fig_persos = go.Figure()
         for st_name in persos_count.index:
-            fig_persos.add_trace(go.Bar(
-                x=[st_name],
-                y=[persos_count[st_name]],
-                name=st_name
-            ))
+            fig_persos.add_trace(go.Bar(x=[st_name], y=[persos_count[st_name]], name=st_name))
         fig_persos.update_layout(
-            title="Complétion Profils personnels",
+            title="Profils personnels",
             updatemenus=[dict(
-                buttons=[dict(label=name,
+                buttons=[dict(label=n,
                               method="update",
-                              args=[{"visible":[n==name for n in persos_count.index]}])
-                         for name in persos_count.index] +
+                              args=[{"visible":[nm==n for nm in persos_count.index]}])
+                         for n in persos_count.index] +
                         [dict(label="Tous", method="update", args=[{"visible":[True]*len(persos_count)}])]
             )]
         )
@@ -173,18 +163,14 @@ if not df_users.empty and not df_entreprises.empty and not df_mises.empty and no
         societes_count = df_globale_filtered["Profil sociétés Le Club"].value_counts()
         fig_soc = go.Figure()
         for st_name in societes_count.index:
-            fig_soc.add_trace(go.Bar(
-                x=[st_name],
-                y=[societes_count[st_name]],
-                name=st_name
-            ))
+            fig_soc.add_trace(go.Bar(x=[st_name], y=[societes_count[st_name]], name=st_name))
         fig_soc.update_layout(
-            title="Complétion Profils sociétés",
+            title="Profils sociétés",
             updatemenus=[dict(
-                buttons=[dict(label=name,
+                buttons=[dict(label=n,
                               method="update",
-                              args=[{"visible":[n==name for n in societes_count.index]}])
-                         for name in societes_count.index] +
+                              args=[{"visible":[nm==n for nm in societes_count.index]}])
+                         for n in societes_count.index] +
                         [dict(label="Tous", method="update", args=[{"visible":[True]*len(societes_count)}])]
             )]
         )

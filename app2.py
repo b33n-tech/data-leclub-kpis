@@ -5,6 +5,7 @@ import io
 import tempfile
 from fpdf import FPDF
 from docx import Document
+from tabulate import tabulate
 
 st.title("Dashboard Marketplace & Incubateur")
 
@@ -127,25 +128,20 @@ if not df_users.empty and not df_entreprises.empty and not df_mises.empty and no
     st.subheader("Statut profils sociétés")
     st.table(df_entreprises.get("Statut", pd.Series()).value_counts())
 
-    # --- Complétion des profils (Base Globale) ---
+    # --- Complétion des profils ---
     st.header("Complétion des profils")
-
-    # Vue globale
     st.subheader("Vue globale")
     st.table(df_globale.get("Profil personnel Le Club", pd.Series()).value_counts())
     st.table(df_globale.get("Profil sociétés Le Club", pd.Series()).value_counts())
 
-    # Par CAR/SUM
     st.subheader("Par CAR/SUM")
     car_value_counts = df_globale.groupby("CAR/SUM (territorial)")["Profil sociétés Le Club"].value_counts()
     st.table(car_value_counts)
 
-    # Par Incubateur territorial
     st.subheader("Par Incubateur territorial")
     incub_value_counts = df_globale.groupby("Incubateur territorial")["Profil sociétés Le Club"].value_counts()
     st.table(incub_value_counts)
 
-    # % complétion incubation individuelle
     st.subheader("% de complétion sur les profils incubation individuelle")
     incubation_indiv = df_globale[df_globale.get("Statut d'incubation", pd.Series()) == "Incubation individuelle"]
     incubation_indiv_pct = (
@@ -156,41 +152,51 @@ if not df_users.empty and not df_entreprises.empty and not df_mises.empty and no
     )
     st.table(incubation_indiv_pct)
 
-    # --- Génération PDF/DOCX ---
-    def generate_pdf(df_users, df_entreprises, df_mises, df_globale):
+    # --- Génération PDF/DOCX complets ---
+    def generate_pdf():
         pdf = FPDF()
         pdf.add_page()
         pdf.set_font("Arial", 'B', 16)
         pdf.cell(0, 10, "Dashboard Marketplace & Incubateur", ln=True, align='C')
-        pdf.set_font("Arial", '', 12)
+        pdf.set_font("Arial", '', 10)
         pdf.ln(5)
-        pdf.cell(0, 8, f"Demandes de mise en relation: {len(df_mises)}", ln=True)
-        pdf.cell(0, 8, f"Profils créés: {len(df_users)}", ln=True)
-        pdf.ln(5)
-        pdf.cell(0, 8, "Statut des mises en relation:", ln=True)
-        for k,v in df_mises.get("Statut des mises en relation à date", pd.Series()).value_counts().items():
-            pdf.cell(0, 8, f"{k}: {v}", ln=True)
-        pdf.ln(5)
-        pdf.cell(0, 8, "Statut profils persos:", ln=True)
-        for k,v in df_users.get("Statut", pd.Series()).value_counts().items():
-            pdf.cell(0, 8, f"{k}: {v}", ln=True)
+
+        # Export des KPI
+        pdf.multi_cell(0, 5, f"Demandes de mise en relation: {demandes_total}")
+        pdf.multi_cell(0, 5, f"Profils créés: {profils_total}")
+        pdf.multi_cell(0, 5, f"Profils connectés sur le mois: {profils_connectes}")
+        pdf.ln(3)
+
+        # Tables Marketplace
+        pdf.multi_cell(0, 5, "Statut des mises en relation:")
+        pdf.multi_cell(0, 5, tabulate(df_mises.get("Statut des mises en relation à date", pd.Series()).value_counts(), headers="keys", tablefmt="grid"))
+        pdf.ln(3)
+        pdf.multi_cell(0, 5, "Statut profils persos:")
+        pdf.multi_cell(0, 5, tabulate(df_users.get("Statut", pd.Series()).value_counts(), headers="keys", tablefmt="grid"))
+        pdf.ln(3)
+        pdf.multi_cell(0, 5, "Complétion profils globaux:")
+        pdf.multi_cell(0, 5, tabulate(df_globale[["Profil personnel Le Club","Profil sociétés Le Club"]].value_counts(), headers="keys", tablefmt="grid"))
+
         return pdf
 
-    def generate_docx(df_users, df_entreprises, df_mises, df_globale):
+    def generate_docx():
         doc = Document()
         doc.add_heading("Dashboard Marketplace & Incubateur", 0)
         doc.add_heading("Datas globales", level=1)
-        doc.add_paragraph(f"Demandes de mise en relation: {len(df_mises)}")
-        doc.add_paragraph(f"Profils créés: {len(df_users)}")
+        doc.add_paragraph(f"Demandes de mise en relation: {demandes_total}")
+        doc.add_paragraph(f"Profils créés: {profils_total}")
+        doc.add_paragraph(f"Profils connectés sur le mois: {profils_connectes}")
+
         doc.add_heading("Statut des mises en relation", level=2)
-        table = doc.add_table(rows=1, cols=2)
-        hdr_cells = table.rows[0].cells
+        table1 = doc.add_table(rows=1, cols=2)
+        hdr_cells = table1.rows[0].cells
         hdr_cells[0].text = 'Statut'
         hdr_cells[1].text = 'Nombre'
         for k,v in df_mises.get("Statut des mises en relation à date", pd.Series()).value_counts().items():
-            row_cells = table.add_row().cells
+            row_cells = table1.add_row().cells
             row_cells[0].text = str(k)
             row_cells[1].text = str(v)
+
         doc.add_heading("Statut profils persos", level=2)
         table2 = doc.add_table(rows=1, cols=2)
         hdr_cells2 = table2.rows[0].cells
@@ -200,18 +206,29 @@ if not df_users.empty and not df_entreprises.empty and not df_mises.empty and no
             row_cells = table2.add_row().cells
             row_cells[0].text = str(k)
             row_cells[1].text = str(v)
+
+        doc.add_heading("Complétion profils globaux", level=2)
+        table3 = doc.add_table(rows=1, cols=2)
+        hdr_cells3 = table3.rows[0].cells
+        hdr_cells3[0].text = "Profil personnel Le Club"
+        hdr_cells3[1].text = "Profil sociétés Le Club"
+        for idx, row in df_globale[["Profil personnel Le Club","Profil sociétés Le Club"]].iterrows():
+            row_cells = table3.add_row().cells
+            row_cells[0].text = str(row[0])
+            row_cells[1].text = str(row[1])
+
         return doc
 
-    # Boutons de téléchargement
+    # --- Boutons de téléchargement ---
     st.subheader("Téléchargements")
     if st.button("Télécharger PDF"):
-        pdf = generate_pdf(df_users, df_entreprises, df_mises, df_globale)
+        pdf = generate_pdf()
         with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
             pdf.output(tmp.name)
             st.download_button("Télécharger PDF", data=open(tmp.name, "rb").read(), file_name="dashboard.pdf")
 
     if st.button("Télécharger DOCX"):
-        doc = generate_docx(df_users, df_entreprises, df_mises, df_globale)
+        doc = generate_docx()
         with tempfile.NamedTemporaryFile(delete=False, suffix=".docx") as tmp:
             doc.save(tmp.name)
             st.download_button("Télécharger DOCX", data=open(tmp.name, "rb").read(), file_name="dashboard.docx")

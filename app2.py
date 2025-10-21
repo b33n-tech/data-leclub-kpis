@@ -6,11 +6,18 @@ import tempfile
 from fpdf import FPDF
 from docx import Document
 from tabulate import tabulate
+import os
 
 st.set_page_config(page_title="Dashboard Marketplace & Incubateur", layout="wide")
 st.title("Dashboard Marketplace & Incubateur")
 
-# --- Fonction ultra-robuste pour lire CSV/XLSX ---
+# --- Fonction utilitaire pour nettoyer le texte pour PDF ---
+def clean_text(text):
+    if pd.isna(text):
+        return ""
+    return str(text).replace("\n", " ").replace("\r", " ").replace("\t", " ").strip()
+
+# --- Fonction pour lire CSV/XLSX ---
 def read_file_safe(uploaded_file, expected_columns=None):
     if uploaded_file is None or uploaded_file.size == 0:
         st.error(f"Le fichier {uploaded_file.name if uploaded_file else 'inconnu'} est vide !")
@@ -18,8 +25,8 @@ def read_file_safe(uploaded_file, expected_columns=None):
 
     content = uploaded_file.read()
     buffer = io.BytesIO(content)
-
     df = None
+
     if uploaded_file.name.endswith(".csv"):
         encodings = ["utf-8", "utf-8-sig", "ISO-8859-1"]
         for enc in encodings:
@@ -48,7 +55,6 @@ def read_file_safe(uploaded_file, expected_columns=None):
         missing_cols = [c for c in expected_columns if c not in df.columns]
         if missing_cols:
             st.error(f"Colonnes manquantes dans {uploaded_file.name} : {missing_cols}")
-
     return df
 
 # --- Upload fichiers ---
@@ -76,7 +82,7 @@ df_entreprises = read_file_safe(file_entreprises, expected_columns=cols_entrepri
 df_mises = read_file_safe(file_mises_relation, expected_columns=cols_mises)
 df_globale = read_file_safe(file_base_globale, expected_columns=cols_globale)
 
-# --- Vérifier que tous les fichiers sont valides ---
+# --- Vérification fichiers valides ---
 if not df_users.empty and not df_entreprises.empty and not df_mises.empty and not df_globale.empty:
 
     # --- Datas globales ---
@@ -166,64 +172,82 @@ if not df_users.empty and not df_entreprises.empty and not df_mises.empty and no
     def generate_pdf():
         pdf = FPDF()
         pdf.add_page()
-        pdf.set_font("Arial", size=10)
+        pdf.set_auto_page_break(auto=True, margin=15)
+        # Ajouter une police Unicode si nécessaire
+        font_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+        if os.path.exists(font_path):
+            pdf.add_font("DejaVu", "", font_path, uni=True)
+            pdf.set_font("DejaVu", size=10)
+        else:
+            pdf.set_font("Arial", size=10)
 
-        # Datas globales
+        def write_table(series, title):
+            pdf.multi_cell(0, 5, clean_text(title))
+            table_text = tabulate(series.reset_index().values, headers=[series.index.name or "Catégorie","Nombre"], tablefmt="grid")
+            for line in table_text.split("\n"):
+                pdf.multi_cell(0, 5, clean_text(line))
+            pdf.ln(5)
+
         pdf.multi_cell(0, 5, f"Demandes de mise en relation: {demandes_total}")
         pdf.multi_cell(0, 5, f"Profils créés: {profils_total}")
-        pdf.multi_cell(0, 5, f"Profils connectés sur le mois: {profils_connectes}\n")
+        pdf.multi_cell(0, 5, f"Profils connectés sur le mois: {profils_connectes}")
+        pdf.ln(5)
 
-        # Statut des mises
-        pdf.multi_cell(0, 5, "Statut des mises en relation:")
-        table_text = tabulate(statut_mises_table.reset_index().values, headers=["Statut","Nombre"], tablefmt="grid")
-        pdf.multi_cell(0, 5, table_text + "\n")
-
-        # Statut profils persos
-        pdf.multi_cell(0, 5, "Statut profils persos:")
-        table_text2 = tabulate(statut_profil_persos.reset_index().values, headers=["Statut","Nombre"], tablefmt="grid")
-        pdf.multi_cell(0, 5, table_text2 + "\n")
-
-        # Statut profils sociétés
-        pdf.multi_cell(0, 5, "Statut profils sociétés:")
-        table_text3 = tabulate(statut_profil_societes.reset_index().values, headers=["Statut","Nombre"], tablefmt="grid")
-        pdf.multi_cell(0, 5, table_text3 + "\n")
+        write_table(statut_mises_table, "Statut des mises en relation")
+        write_table(statut_profil_persos, "Statut profils persos")
+        write_table(statut_profil_societes, "Statut profils sociétés")
+        write_table(profil_persos_counts, "Complétion profils persos")
+        write_table(profil_societes_counts, "Complétion profils sociétés")
+        write_table(car_sum_counts, "Complétion par CAR/SUM")
+        write_table(incubateur_counts, "Complétion par Incubateur territorial")
+        write_table(incubation_counts, "Complétion sur Incubation individuelle (%)")
 
         return pdf
+
+    if st.button("Télécharger PDF"):
+        pdf = generate_pdf()
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+            pdf.output(tmp.name)
+            tmp.seek(0)
+            st.download_button("Télécharger PDF", tmp.name, file_name="KPIs.pdf", mime="application/pdf")
 
     # --- Génération DOCX ---
     def generate_docx():
         doc = Document()
         doc.add_heading("Dashboard Marketplace & Incubateur", level=1)
 
-        doc.add_heading("Datas globales", level=2)
+        def write_table_doc(series, title):
+            doc.add_heading(title, level=2)
+            table = doc.add_table(rows=1, cols=2)
+            hdr_cells = table.rows[0].cells
+            hdr_cells[0].text = series.index.name or "Catégorie"
+            hdr_cells[1].text = "Nombre"
+            for idx, val in series.items():
+                row_cells = table.add_row().cells
+                row_cells[0].text = clean_text(idx)
+                row_cells[1].text = str(val)
+            doc.add_paragraph("\n")
+
         doc.add_paragraph(f"Demandes de mise en relation: {demandes_total}")
         doc.add_paragraph(f"Profils créés: {profils_total}")
         doc.add_paragraph(f"Profils connectés sur le mois: {profils_connectes}")
-
-        doc.add_heading("Statut des mises en relation", level=2)
-        table = doc.add_table(rows=1, cols=2)
-        hdr_cells = table.rows[0].cells
-        hdr_cells[0].text = 'Statut'
-        hdr_cells[1].text = 'Nombre'
-        for k, v in statut_mises_table.items():
-            row_cells = table.add_row().cells
-            row_cells[0].text = str(k)
-            row_cells[1].text = str(v)
+        write_table_doc(statut_mises_table, "Statut des mises en relation")
+        write_table_doc(statut_profil_persos, "Statut profils persos")
+        write_table_doc(statut_profil_societes, "Statut profils sociétés")
+        write_table_doc(profil_persos_counts, "Complétion profils persos")
+        write_table_doc(profil_societes_counts, "Complétion profils sociétés")
+        write_table_doc(car_sum_counts, "Complétion par CAR/SUM")
+        write_table_doc(incubateur_counts, "Complétion par Incubateur territorial")
+        write_table_doc(incubation_counts, "Complétion sur Incubation individuelle (%)")
 
         return doc
 
-    st.subheader("Téléchargements")
-    if st.button("Télécharger PDF"):
-        pdf = generate_pdf()
-        tmp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
-        pdf.output(tmp_file.name)
-        st.download_button("Télécharger PDF", tmp_file.name, file_name="dashboard_kpis.pdf")
-
     if st.button("Télécharger DOCX"):
         doc = generate_docx()
-        tmp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".docx")
-        doc.save(tmp_file.name)
-        st.download_button("Télécharger DOCX", tmp_file.name, file_name="dashboard_kpis.docx")
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".docx") as tmp:
+            doc.save(tmp.name)
+            tmp.seek(0)
+            st.download_button("Télécharger DOCX", tmp.name, file_name="KPIs.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
 
 else:
     st.info("Veuillez uploader tous les fichiers correctement pour générer les KPIs.")

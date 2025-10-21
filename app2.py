@@ -146,49 +146,93 @@ if not df_users.empty and not df_entreprises.empty and not df_mises.empty and no
         .round(2)
     )
 
-    # --- Génération du DOCX ---
-    def generate_docx(df_users, df_entreprises, df_mises, df_globale):
+    # --- Génération du DOCX avec uniquement les datas ---
+    def generate_docx_metrics(df_users, df_entreprises, df_mises, df_globale):
         doc = Document()
         doc.add_heading("Dashboard Marketplace & Incubateur - Extract", 0)
 
-        # --- KPIs ---
-        doc.add_heading("KPIs", level=1)
-        doc.add_paragraph(f"Demandes de mise en relation : {len(df_mises)}")
-        doc.add_paragraph(f"Profils créés : {len(df_users)}")
-        doc.add_paragraph(f"Profils connectés sur le mois : {profils_connectes}")
+        # Datas globales
+        doc.add_heading("Datas globales", level=1)
+        demandes_total = len(df_mises)
+        profils_total = len(df_users)
+        today = datetime.today()
+        month_ago = today - timedelta(days=30)
+        df_users["Date de dernière connexion"] = pd.to_datetime(df_users["Date de dernière connexion"], dayfirst=True, errors="coerce")
+        profils_connectes = df_users[df_users["Date de dernière connexion"] >= month_ago].shape[0]
 
-        # --- Marketplace ---
+        doc.add_paragraph(f"Demandes de mise en relation: {demandes_total}")
+        doc.add_paragraph(f"Profils créés: {profils_total}")
+        doc.add_paragraph(f"Profils connectés sur le mois: {profils_connectes}")
+
+        # Marketplace
         doc.add_heading("Marketplace", level=1)
-        doc.add_paragraph(f"Go Between validés : {go_between_valides}")
-        doc.add_paragraph(f"RDV réalisés : {rdv_realises}")
-        doc.add_paragraph(f"RDV non réalisés : {rdv_non_realises}")
-        doc.add_paragraph(f"Taux de conversion Go Between (%) : {round(taux_go_between,2)}")
-        doc.add_paragraph(f"Taux de conversion RDV réalisés (%) : {round(taux_rdv,2)}")
+        go_between_valides = (df_mises["Go between validé"] == "Oui").sum()
+        rdv_realises = df_mises["RDV réalisés"].sum()
+        rdv_non_realises = df_mises["Rdv non réalisé"].sum()
+        doc.add_heading("Totaux", level=2)
+        doc.add_paragraph(f"Go Between validés: {go_between_valides}")
+        doc.add_paragraph(f"RDV réalisés: {rdv_realises}")
+        doc.add_paragraph(f"RDV non réalisés: {rdv_non_realises}")
 
-        # --- Tableaux principaux ---
-        def df_to_docx_table(df, title):
-            doc.add_heading(title, level=2)
-            table = doc.add_table(rows=1, cols=len(df.columns))
-            table.style = 'Table Grid'
-            hdr_cells = table.rows[0].cells
-            for i, col in enumerate(df.columns):
-                hdr_cells[i].text = str(col)
-            for _, row in df.iterrows():
-                row_cells = table.add_row().cells
-                for i, val in enumerate(row):
-                    row_cells[i].text = str(val)
-        
-        df_to_docx_table(df_users.head(10), "Exemple Profils Persos (10 lignes)")
-        df_to_docx_table(df_entreprises.head(10), "Exemple Profils Sociétés (10 lignes)")
-        df_to_docx_table(df_mises.head(10), "Exemple Mises en Relation (10 lignes)")
-        df_to_docx_table(df_globale.head(10), "Exemple Base Globale (10 lignes)")
+        doc.add_heading("Statut des mises en relation", level=2)
+        for statut, count in df_mises["Statut des mises en relation à date"].value_counts().items():
+            doc.add_paragraph(f"{statut}: {count}")
+
+        taux_go_between = pd.to_numeric(df_mises["Taux de conversion goBetween"], errors="coerce").mean()
+        taux_rdv = pd.to_numeric(df_mises["Taux de conversion RDV réalisé"], errors="coerce").mean()
+        doc.add_paragraph(f"Taux de conversion Go Between (%): {round(taux_go_between, 2)}")
+        doc.add_paragraph(f"Taux de conversion RDV réalisés (%): {round(taux_rdv, 2)}")
+
+        df_mises["Dates simples"] = pd.to_datetime(df_mises["Dates simples"], format="%Y-%m", errors="coerce")
+        df_mises["Trimestre"] = df_mises["Dates simples"].dt.to_period("Q")
+        trimestriel = df_mises.groupby("Trimestre").size()
+        doc.add_heading("Répartition trimestrielle des demandes", level=2)
+        for trimestre, count in trimestriel.items():
+            doc.add_paragraph(f"{trimestre}: {count}")
+
+        # Profils persos & Sociétés
+        doc.add_heading("Profils persos & Sociétés", level=1)
+        doc.add_paragraph(f"Nombre total d'entrepreneurs: {len(df_globale)}")
+        doc.add_paragraph(f"Total profils persos: {len(df_users)}")
+
+        doc.add_heading("Statut profils persos", level=2)
+        for statut, count in df_users["Statut"].value_counts().items():
+            doc.add_paragraph(f"{statut}: {count}")
+
+        doc.add_heading("Statut profils sociétés", level=2)
+        for statut, count in df_entreprises["Statut"].value_counts().items():
+            doc.add_paragraph(f"{statut}: {count}")
+
+        # Complétion des profils
+        doc.add_heading("Complétion des profils", level=1)
+        doc.add_heading("Vue globale", level=2)
+        for val, count in df_globale["Profil personnel Le Club"].value_counts().items():
+            doc.add_paragraph(f"{val} (personnel): {count}")
+        for val, count in df_globale["Profil sociétés Le Club"].value_counts().items():
+            doc.add_paragraph(f"{val} (sociétés): {count}")
+
+        doc.add_heading("Par CAR/SUM", level=2)
+        grouped_car = df_globale.groupby("CAR/SUM (territorial)")["Profil sociétés Le Club"].value_counts()
+        for (car, profil), count in grouped_car.items():
+            doc.add_paragraph(f"{car} - {profil}: {count}")
+
+        doc.add_heading("Par Incubateur territorial", level=2)
+        grouped_inc = df_globale.groupby("Incubateur territorial")["Profil sociétés Le Club"].value_counts()
+        for (incub, profil), count in grouped_inc.items():
+            doc.add_paragraph(f"{incub} - {profil}: {count}")
+
+        doc.add_heading("% de complétion sur les profils incubation individuelle", level=2)
+        incubation_indiv = df_globale[df_globale["Statut d'incubation"] == "Incubation individuelle"]
+        for val, pct in (incubation_indiv["Profil sociétés Le Club"].value_counts(normalize=True).mul(100).round(2).items()):
+            doc.add_paragraph(f"{val}: {pct}%")
 
         doc_stream = io.BytesIO()
         doc.save(doc_stream)
         doc_stream.seek(0)
         return doc_stream
 
-    docx_data = generate_docx(df_users, df_entreprises, df_mises, df_globale)
+    # --- Bouton de téléchargement ---
+    docx_data = generate_docx_metrics(df_users, df_entreprises, df_mises, df_globale)
     st.download_button(
         label="Télécharger l'extract en DOCX",
         data=docx_data,

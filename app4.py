@@ -2,10 +2,10 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta
 import io
-import plotly.graph_objects as go
 import plotly.express as px
+from st_aggrid import AgGrid, GridOptionsBuilder, DataReturnMode, GridUpdateMode
 
-st.title("Dashboard Marketplace & Incubateur (V6 Interactive)")
+st.title("Dashboard Marketplace & Incubateur (V8 Interactive)")
 
 # --- Fonction utilitaire ---
 def read_file_safe(uploaded_file, expected_columns=None):
@@ -81,125 +81,61 @@ if not df_users.empty and not df_entreprises.empty and not df_mises.empty and no
     df_globale["Profil personnel Le Club"] = df_globale.get("Profil personnel Le Club", pd.Series([])).astype(str).str.strip()
     df_globale["Profil sociétés Le Club"] = df_globale.get("Profil sociétés Le Club", pd.Series([])).astype(str).str.strip()
 
-    # -----------------------------
-    # Marketplace
-    st.header("Marketplace")
-    st.sidebar.subheader("Filtres Marketplace")
-    car_market = ["Tout"] + sorted(df_globale["CAR/SUM (territorial)"].dropna().unique())
-    selected_car_market = st.sidebar.selectbox("CAR/SUM (Marketplace)", car_market, key="car_market")
-    inc_market = ["Tout"] + sorted(df_globale["Incubateur territorial"].dropna().unique())
-    selected_inc_market = st.sidebar.selectbox("Incubateur (Marketplace)", inc_market, key="inc_market")
-    trimestre_market = ["Tout"] + sorted(df_mises["Trimestre"].dropna().unique())
-    selected_trimestre_market = st.sidebar.selectbox("Trimestre (Marketplace)", trimestre_market, key="trimestre_market")
+    # --- Tableau interactif avec st_aggrid ---
+    st.subheader("Tableau interactif (filtrez les colonnes pour recalculer KPIs)")
+    gb = GridOptionsBuilder.from_dataframe(df_globale)
+    gb.configure_default_column(filterable=True, sortable=True)
+    gb.configure_selection(selection_mode="multiple", use_checkbox=True)
+    gridOptions = gb.build()
 
-    # Filtrage Marketplace
-    df_mises_market = df_mises.copy()
-    df_globale_market = df_globale.copy()
-    if selected_trimestre_market != "Tout":
-        df_mises_market = df_mises_market[df_mises_market["Trimestre"] == selected_trimestre_market]
-    if selected_car_market != "Tout":
-        df_globale_market = df_globale_market[df_globale_market["CAR/SUM (territorial)"] == selected_car_market]
-    if selected_inc_market != "Tout":
-        df_globale_market = df_globale_market[df_globale_market["Incubateur territorial"] == selected_inc_market]
+    grid_response = AgGrid(
+        df_globale,
+        gridOptions=gridOptions,
+        data_return_mode=DataReturnMode.FILTERED_AND_SORTED,
+        update_mode=GridUpdateMode.MODEL_CHANGED,
+        fit_columns_on_grid_load=True,
+        height=400,
+        reload_data=True
+    )
 
-    # KPIs Marketplace
-    demandes_total = len(df_mises_market)
-    go_between_valides = (df_mises_market["Go between validé"] == "Oui").sum()
-    rdv_realises = df_mises_market["RDV réalisés"].sum()
-    rdv_non_realises = df_mises_market["Rdv non réalisé"].sum()
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Demandes", demandes_total)
-    col2.metric("Go Between validés", go_between_valides)
-    col3.metric("RDV réalisés", rdv_realises)
-    col4.metric("RDV non réalisés", rdv_non_realises)
+    # --- Récupérer les lignes visibles après filtrage ---
+    df_filtered = pd.DataFrame(grid_response['data'])
 
-    # Graphique statut
-    if not df_mises_market.empty:
-        status_counts = df_mises_market["Statut des mises en relation à date"].value_counts()
-        fig_market = go.Figure()
-        for status in status_counts.index:
-            fig_market.add_trace(go.Bar(x=[status], y=[status_counts[status]], name=status))
-        fig_market.update_layout(
-            title="Statut des mises en relation",
-            updatemenus=[dict(
-                buttons=[dict(label=s,
-                              method="update",
-                              args=[{"visible":[st==s for st in status_counts.index]}])
-                         for s in status_counts.index] +
-                        [dict(label="Tous", method="update", args=[{"visible":[True]*len(status_counts)}])]
-            )]
-        )
-        st.plotly_chart(fig_market, use_container_width=True)
+    # --- KPIs recalculés dynamiques ---
+    st.subheader("KPIs dynamiques selon filtre")
+    demandes_total = df_mises[df_mises["Utilisateur"].isin(df_filtered["Name"])].shape[0]
+    profils_total = len(df_filtered)
+    today = datetime.today()
+    month_ago = today - timedelta(days=30)
+    profils_connectes = df_users[df_users["Date de dernière connexion"] >= month_ago].shape[0]
 
-    # Trimestriel
-    if not df_mises_market.empty:
-        trimestriel = df_mises_market.groupby("Trimestre").size().reset_index(name="Nombre de demandes")
-        fig_tri = px.bar(trimestriel, x="Trimestre", y="Nombre de demandes", title="Répartition trimestrielle")
-        st.plotly_chart(fig_tri, use_container_width=True)
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Profils filtrés", profils_total)
+    col2.metric("Demandes Marketplace filtrées", demandes_total)
+    col3.metric("Profils connectés ce mois", profils_connectes)
 
-    # -----------------------------
-    # Profils personnels
-    st.header("Profils personnels")
-    st.sidebar.subheader("Filtres Profils personnels")
-    car_perso = ["Tout"] + sorted(df_globale["CAR/SUM (territorial)"].dropna().unique())
-    selected_car_perso = st.sidebar.selectbox("CAR/SUM (Profils perso)", car_perso, key="car_perso")
-    inc_perso = ["Tout"] + sorted(df_globale["Incubateur territorial"].dropna().unique())
-    selected_inc_perso = st.sidebar.selectbox("Incubateur (Profils perso)", inc_perso, key="inc_perso")
-
-    df_persos_filtered = df_globale.copy()
-    if selected_car_perso != "Tout":
-        df_persos_filtered = df_persos_filtered[df_persos_filtered["CAR/SUM (territorial)"] == selected_car_perso]
-    if selected_inc_perso != "Tout":
-        df_persos_filtered = df_persos_filtered[df_persos_filtered["Incubateur territorial"] == selected_inc_perso]
-
-    if not df_persos_filtered.empty:
-        persos_count = df_persos_filtered["Profil personnel Le Club"].value_counts()
-        fig_persos = go.Figure()
-        for st_name in persos_count.index:
-            fig_persos.add_trace(go.Bar(x=[st_name], y=[persos_count[st_name]], name=st_name))
-        fig_persos.update_layout(
-            title="Complétion Profils personnels",
-            updatemenus=[dict(
-                buttons=[dict(label=n,
-                              method="update",
-                              args=[{"visible":[nm==n for nm in persos_count.index]}])
-                         for n in persos_count.index] +
-                        [dict(label="Tous", method="update", args=[{"visible":[True]*len(persos_count)}])]
-            )]
-        )
+    # --- Graphiques dynamiques ---
+    st.subheader("Statut profils personnels")
+    persos_count = df_filtered["Profil personnel Le Club"].value_counts()
+    if not persos_count.empty:
+        fig_persos = px.bar(persos_count.reset_index(), x="index", y="Profil personnel Le Club", text="Profil personnel Le Club")
+        fig_persos.update_layout(xaxis_title="Profil personnel", yaxis_title="Nombre")
         st.plotly_chart(fig_persos, use_container_width=True)
 
-    # -----------------------------
-    # Profils sociétés
-    st.header("Profils sociétés")
-    st.sidebar.subheader("Filtres Profils sociétés")
-    car_soc = ["Tout"] + sorted(df_globale["CAR/SUM (territorial)"].dropna().unique())
-    selected_car_soc = st.sidebar.selectbox("CAR/SUM (Sociétés)", car_soc, key="car_soc")
-    inc_soc = ["Tout"] + sorted(df_globale["Incubateur territorial"].dropna().unique())
-    selected_inc_soc = st.sidebar.selectbox("Incubateur (Sociétés)", inc_soc, key="inc_soc")
-
-    df_soc_filtered = df_globale.copy()
-    if selected_car_soc != "Tout":
-        df_soc_filtered = df_soc_filtered[df_soc_filtered["CAR/SUM (territorial)"] == selected_car_soc]
-    if selected_inc_soc != "Tout":
-        df_soc_filtered = df_soc_filtered[df_soc_filtered["Incubateur territorial"] == selected_inc_soc]
-
-    if not df_soc_filtered.empty:
-        societes_count = df_soc_filtered["Profil sociétés Le Club"].value_counts()
-        fig_soc = go.Figure()
-        for st_name in societes_count.index:
-            fig_soc.add_trace(go.Bar(x=[st_name], y=[societes_count[st_name]], name=st_name))
-        fig_soc.update_layout(
-            title="Complétion Profils sociétés",
-            updatemenus=[dict(
-                buttons=[dict(label=n,
-                              method="update",
-                              args=[{"visible":[nm==n for nm in societes_count.index]}])
-                         for n in societes_count.index] +
-                        [dict(label="Tous", method="update", args=[{"visible":[True]*len(societes_count)}])]
-            )]
-        )
+    st.subheader("Statut profils sociétés")
+    societes_count = df_filtered["Profil sociétés Le Club"].value_counts()
+    if not societes_count.empty:
+        fig_soc = px.bar(societes_count.reset_index(), x="index", y="Profil sociétés Le Club", text="Profil sociétés Le Club")
+        fig_soc.update_layout(xaxis_title="Profil sociétés", yaxis_title="Nombre")
         st.plotly_chart(fig_soc, use_container_width=True)
+
+    st.subheader("Marketplace (Demandes par statut)")
+    df_mises_filtered = df_mises[df_mises["Utilisateur"].isin(df_filtered["Name"])]
+    if not df_mises_filtered.empty:
+        status_counts = df_mises_filtered["Statut des mises en relation à date"].value_counts()
+        fig_market = px.bar(status_counts.reset_index(), x="index", y="Statut des mises en relation à date", text="Statut des mises en relation à date")
+        fig_market.update_layout(xaxis_title="Statut", yaxis_title="Nombre de demandes")
+        st.plotly_chart(fig_market, use_container_width=True)
 
 else:
     st.info("Veuillez uploader tous les fichiers correctement pour générer les KPIs.")

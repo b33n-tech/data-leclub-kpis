@@ -181,18 +181,39 @@ with st.spinner("Chargement du dashboard..."):
         st.table(df_globale["Profil personnel Le Club"].value_counts())
         st.table(df_globale["Profil sociétés Le Club"].value_counts())
 
-        # --- Génération DOCX ---
+        # --- Génération DOCX complète ---
         def generate_docx_metrics(df_users, df_entreprises, df_mises, df_globale):
             doc = Document()
             doc.add_heading("Dashboard Marketplace & Incubateur - Extract", 0)
+            
+            # Logo
             try:
                 doc.add_picture("logo1.png")
             except:
                 pass
+
             doc.add_paragraph(f"Généré le {today.strftime('%d/%m/%Y')}")
             doc.add_paragraph(f"Demandes de mise en relation: {len(df_mises)}")
             doc.add_paragraph(f"Profils créés: {len(df_users)}")
             doc.add_paragraph(f"Profils connectés sur le mois: {df_users[df_users['Date de dernière connexion'] >= month_ago].shape[0]}")
+
+            # Fonction pour ajouter un dataframe en tableau Word
+            def add_df_table(df, title):
+                doc.add_heading(title, level=1)
+                table = doc.add_table(rows=1, cols=len(df.columns))
+                hdr_cells = table.rows[0].cells
+                for i, col in enumerate(df.columns):
+                    hdr_cells[i].text = str(col)
+                for _, row in df.iterrows():
+                    row_cells = table.add_row().cells
+                    for i, col in enumerate(df.columns):
+                        row_cells[i].text = str(row[col])
+            
+            add_df_table(df_users, "Users")
+            add_df_table(df_entreprises, "Entreprises")
+            add_df_table(df_mises, "Mises en relation")
+            add_df_table(df_globale, "Base Globale")
+
             stream = io.BytesIO()
             doc.save(stream)
             stream.seek(0)
@@ -200,7 +221,7 @@ with st.spinner("Chargement du dashboard..."):
 
         docx_data = generate_docx_metrics(df_users, df_entreprises, df_mises, df_globale)
         st.download_button(
-            label="Télécharger l'extract en DOCX",
+            label="Télécharger l'extract complet en DOCX",
             data=docx_data,
             file_name=f"dashboard_extract_{today.strftime('%Y%m%d')}.docx",
             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"

@@ -3,9 +3,8 @@ import pandas as pd
 from datetime import datetime, timedelta
 import io
 from docx import Document
-import time
 
-# --- Splash Screen (animation de chargement) ---
+# --- Splash Screen simplifié (logo centré, fade-in) ---
 st.markdown("""
     <style>
     /* Écran de chargement plein écran */
@@ -18,47 +17,32 @@ st.markdown("""
         justify-content: center;
         align-items: center;
         z-index: 9999;
-        flex-direction: column;
     }
 
     #loader img {
         width: 200px;
-        animation: fadeIn 1.5s ease-in-out infinite alternate;
-    }
-
-    .loader-bar {
-        width: 200px;
-        height: 6px;
-        background-color: #3ecdd1;
-        margin-top: 20px;
-        border-radius: 3px;
-        animation: loading 2.5s ease-in-out infinite;
+        animation: fadeIn 1.5s ease-in-out forwards;
     }
 
     @keyframes fadeIn {
-        from {opacity: 0.6;}
+        from {opacity: 0;}
         to {opacity: 1;}
-    }
-
-    @keyframes loading {
-        0% {width: 0;}
-        50% {width: 100%;}
-        100% {width: 0;}
     }
     </style>
 
     <div id="loader">
         <img src="logo1.png" alt="Logo Quest for Change">
-        <div class="loader-bar"></div>
     </div>
 
     <script>
     window.addEventListener('load', () => {
-        const loader = document.getElementById('loader');
-        setTimeout(() => { loader.style.display = 'none'; }, 2500);
+        setTimeout(() => { 
+            const loader = document.getElementById('loader');
+            loader.style.display = 'none';
+        }, 2500);  // 2,5 secondes
     });
     </script>
-    """, unsafe_allow_html=True)
+""", unsafe_allow_html=True)
 
 # --- Thème global (sobre et corporate) ---
 st.markdown("""
@@ -114,7 +98,7 @@ st.markdown("""
         margin: 1.5em 0;
     }
     </style>
-    """, unsafe_allow_html=True)
+""", unsafe_allow_html=True)
 
 # --- Logos ---
 st.sidebar.image("logo1.png", use_container_width=True)
@@ -124,7 +108,7 @@ st.sidebar.image("logo2.png", use_container_width=True)
 st.image("logo2.png", width=200)
 st.title("Dashboard Marketplace & Incubateur")
 
-# --- Fonction utilitaire pour lecture sécurisée ---
+# --- Fonction utilitaire ---
 def read_file_safe(uploaded_file, expected_columns=None):
     if uploaded_file is None or uploaded_file.size == 0:
         st.error(f"Le fichier {uploaded_file.name if uploaded_file else 'inconnu'} est vide !")
@@ -190,9 +174,10 @@ df_entreprises = read_file_safe(file_entreprises, expected_columns=cols_entrepri
 df_mises = read_file_safe(file_mises_relation, expected_columns=cols_mises)
 df_globale = read_file_safe(file_base_globale, expected_columns=cols_globale)
 
-# --- Si tous les fichiers sont présents ---
+# --- Vérification ---
 if not df_users.empty and not df_entreprises.empty and not df_mises.empty and not df_globale.empty:
 
+    # --- Datas globales ---
     st.header("Datas globales")
     demandes_total = len(df_mises)
     profils_total = len(df_users)
@@ -227,21 +212,30 @@ if not df_users.empty and not df_entreprises.empty and not df_mises.empty and no
     trimestriel = df_mises.groupby("Trimestre").size()
     st.table(trimestriel)
 
+    # --- Profils persos & Sociétés ---
+    st.header("Profils persos & Sociétés")
+    st.metric("Nombre total d'entrepreneurs", len(df_globale))
+    st.metric("Total profils persos", len(df_users))
+
+    st.table(df_users["Statut"].value_counts())
+    st.table(df_entreprises["Statut"].value_counts())
+
+    # --- Complétion des profils ---
+    st.header("Complétion des profils")
+    st.table(df_globale["Profil personnel Le Club"].value_counts())
+    st.table(df_globale["Profil sociétés Le Club"].value_counts())
+
     # --- DOCX Generation ---
     def generate_docx_metrics(df_users, df_entreprises, df_mises, df_globale):
         doc = Document()
         doc.add_heading("Dashboard Marketplace & Incubateur - Extract", 0)
 
-        # Ajouter un logo au document
         try:
             doc.add_picture("logo1.png", width=None)
         except:
             pass
 
         doc.add_paragraph(f"Généré le {datetime.today().strftime('%d/%m/%Y')}")
-
-        # Section datas
-        doc.add_heading("Données principales", level=1)
         doc.add_paragraph(f"Demandes de mise en relation: {len(df_mises)}")
         doc.add_paragraph(f"Profils créés: {len(df_users)}")
         doc.add_paragraph(f"Profils connectés sur le mois: {df_users[df_users['Date de dernière connexion'] >= month_ago].shape[0]}")

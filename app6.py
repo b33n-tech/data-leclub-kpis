@@ -4,113 +4,121 @@ from datetime import datetime, timedelta
 import io
 from docx import Document
 
-# --- Splash Screen final (logo centré, fade-in/out, div supprimée) ---
+# -----------------------------
+# Splash Screen (logo centré)
+# -----------------------------
 st.markdown("""
-    <style>
-    #loader {
-        position: fixed;
-        width: 100%;
-        height: 100%;
-        background-color: #1d2732;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        z-index: 9999;
-        transition: opacity 0.5s ease;
-    }
+<style>
+#loader {
+    position: fixed;
+    width: 100%;
+    height: 100%;
+    background-color: #1d2732;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 9999;
+    transition: opacity 0.5s ease;
+}
 
-    #loader img {
-        width: 200px;
-        display: block;
-        margin: 0 auto;
-        animation: fadeIn 1.5s ease-in-out forwards;
-    }
+#loader img {
+    width: 200px;
+    display: block;
+    margin: 0 auto;
+    animation: fadeIn 1.5s ease-in-out forwards;
+}
 
-    @keyframes fadeIn {
-        from {opacity: 0;}
-        to {opacity: 1;}
-    }
-    </style>
+@keyframes fadeIn {
+    from {opacity: 0;}
+    to {opacity: 1;}
+}
+</style>
 
-    <div id="loader">
-        <img src="logo1.png">
-    </div>
+<div id="loader">
+    <img src="logo1.png">
+</div>
 
-    <script>
-    window.addEventListener('load', () => {
-        setTimeout(() => { 
-            const loader = document.getElementById('loader');
-            loader.style.opacity = 0;
-            setTimeout(() => loader.remove(), 500); // supprime la div après fade-out
-        }, 2500);
-    });
-    </script>
+<script>
+window.addEventListener('load', () => {
+    setTimeout(() => { 
+        const loader = document.getElementById('loader');
+        loader.style.opacity = 0;
+        setTimeout(() => loader.remove(), 500);
+    }, 2500);
+});
+</script>
 """, unsafe_allow_html=True)
 
-# --- Thème global ---
+# -----------------------------
+# Thème global
+# -----------------------------
 st.markdown("""
-    <style>
-    .stApp {
-        background-color: #1d2732;
-        color: white;
-        font-family: 'Inter', sans-serif;
-    }
+<style>
+.stApp {
+    background-color: #1d2732;
+    color: white;
+    font-family: 'Inter', sans-serif;
+}
 
-    h1, h2, h3 {
-        color: #3ecdd1;
-        font-weight: 600;
-    }
+h1, h2, h3 {
+    color: #3ecdd1;
+    font-weight: 600;
+}
 
-    section[data-testid="stSidebar"] {
-        background-color: #232f3c;
-        color: white;
-    }
+section[data-testid="stSidebar"] {
+    background-color: #232f3c;
+    color: white;
+}
 
-    .stButton > button {
-        background-color: #3ecdd1;
-        color: #1d2732;
-        border: none;
-        border-radius: 6px;
-        padding: 0.4em 1.2em;
-        font-weight: 600;
-        transition: all 0.2s ease;
-    }
-    .stButton > button:hover {
-        background-color: #35b9c1;
-        color: white;
-    }
+.stButton > button {
+    background-color: #3ecdd1;
+    color: #1d2732;
+    border: none;
+    border-radius: 6px;
+    padding: 0.4em 1.2em;
+    font-weight: 600;
+    transition: all 0.2s ease;
+}
+.stButton > button:hover {
+    background-color: #35b9c1;
+    color: white;
+}
 
-    .stMetric {
-        background-color: #232f3c;
-        border-radius: 8px;
-        padding: 0.8em;
-    }
-    .stMetric label {
-        color: #3ecdd1 !important;
-    }
+.stMetric {
+    background-color: #232f3c;
+    border-radius: 8px;
+    padding: 0.8em;
+}
+.stMetric label {
+    color: #3ecdd1 !important;
+}
 
-    .stTable {
-        background-color: #232f3c;
-        border-radius: 8px;
-        padding: 0.5em;
-    }
+.stTable {
+    background-color: #232f3c;
+    border-radius: 8px;
+    padding: 0.5em;
+}
 
-    hr {
-        border: none;
-        border-top: 1px solid #3ecdd1;
-        margin: 1.5em 0;
-    }
-    </style>
+hr {
+    border: none;
+    border-top: 1px solid #3ecdd1;
+    margin: 1.5em 0;
+}
+</style>
 """, unsafe_allow_html=True)
 
-# --- Logos ---
+# -----------------------------
+# Logos dans la sidebar uniquement
+# -----------------------------
 st.sidebar.image("logo1.png", use_container_width=True)
 st.sidebar.markdown("<br>", unsafe_allow_html=True)
 st.sidebar.image("logo2.png", use_container_width=True)
 
 st.title("Dashboard Marketplace & Incubateur")
 
-# --- Fonction utilitaire ---
+# -----------------------------
+# Fonction de lecture sécurisée
+# -----------------------------
 def read_file_safe(uploaded_file, expected_columns=None):
     if uploaded_file is None or uploaded_file.size == 0:
         st.error(f"Le fichier {uploaded_file.name if uploaded_file else 'inconnu'} est vide !")
@@ -151,14 +159,18 @@ def read_file_safe(uploaded_file, expected_columns=None):
 
     return df
 
-# --- Upload des fichiers ---
+# -----------------------------
+# Upload des fichiers
+# -----------------------------
 st.sidebar.header("Uploader les fichiers")
 file_users = st.sidebar.file_uploader("Noms persos", type=["csv","xlsx"])
 file_entreprises = st.sidebar.file_uploader("Entreprises données", type=["csv","xlsx"])
 file_mises_relation = st.sidebar.file_uploader("Historique des mises en relation", type=["csv","xlsx"])
 file_base_globale = st.sidebar.file_uploader("Base globale projet", type=["csv","xlsx"])
 
-# --- Colonnes attendues ---
+# -----------------------------
+# Colonnes attendues
+# -----------------------------
 cols_users = ["#Id", "Prénom", "Nom", "Inscrit depuis le", "Statut", "ID Unique", "Date de dernière connexion"]
 cols_entreprises = ["Id", "Nom", "Date de création", "Date d'ouverture", "Incubateurs", "À propos", "Missions",
                     "Adresse", "Ville", "Code postal", "Téléphone", "Email", "Effectifs", "Linkedin", "Site web",
@@ -170,13 +182,17 @@ cols_globale = ["Name","Nom","Projet","CAR/SUM (territorial)","Incubateur territ
                 "Poste et/ou fonction","Profil personnel Le Club","Profil sociétés Le Club",
                 "Partenaires Marketplace","Date dernière connexion Le Club"]
 
-# --- Lecture sécurisée ---
+# -----------------------------
+# Lecture sécurisée
+# -----------------------------
 df_users = read_file_safe(file_users, expected_columns=cols_users)
 df_entreprises = read_file_safe(file_entreprises, expected_columns=cols_entreprises)
 df_mises = read_file_safe(file_mises_relation, expected_columns=cols_mises)
 df_globale = read_file_safe(file_base_globale, expected_columns=cols_globale)
 
-# --- Vérification fichiers ---
+# -----------------------------
+# Dashboard si fichiers OK
+# -----------------------------
 if not df_users.empty and not df_entreprises.empty and not df_mises.empty and not df_globale.empty:
 
     # --- Datas globales ---

@@ -4,10 +4,9 @@ from datetime import datetime, timedelta
 import io
 from docx import Document
 
-# --- Splash Screen simplifié (logo centré, fade-in, sans texte) ---
+# --- Splash Screen final (logo centré, fade-in/out, div supprimée) ---
 st.markdown("""
     <style>
-    /* Écran de chargement plein écran */
     #loader {
         position: fixed;
         width: 100%;
@@ -17,6 +16,7 @@ st.markdown("""
         justify-content: center;
         align-items: center;
         z-index: 9999;
+        transition: opacity 0.5s ease;
     }
 
     #loader img {
@@ -40,8 +40,9 @@ st.markdown("""
     window.addEventListener('load', () => {
         setTimeout(() => { 
             const loader = document.getElementById('loader');
-            loader.style.display = 'none';
-        }, 2500);  // 2,5 secondes
+            loader.style.opacity = 0;
+            setTimeout(() => loader.remove(), 500); // supprime la div après fade-out
+        }, 2500);
     });
     </script>
 """, unsafe_allow_html=True)

@@ -5,7 +5,7 @@ import io
 from docx import Document
 
 # -----------------------------
-# Splash Screen (logo centré)
+# Loader Splash (non intrusif)
 # -----------------------------
 st.markdown("""
 <style>
@@ -108,16 +108,22 @@ hr {
 """, unsafe_allow_html=True)
 
 # -----------------------------
-# Logos dans la sidebar uniquement
+# Sidebar logos et uploads
 # -----------------------------
 st.sidebar.image("logo1.png", use_container_width=True)
 st.sidebar.markdown("<br>", unsafe_allow_html=True)
 st.sidebar.image("logo2.png", use_container_width=True)
 
+st.sidebar.header("Uploader les fichiers")
+file_users = st.sidebar.file_uploader("Noms persos", type=["csv","xlsx"])
+file_entreprises = st.sidebar.file_uploader("Entreprises données", type=["csv","xlsx"])
+file_mises_relation = st.sidebar.file_uploader("Historique des mises en relation", type=["csv","xlsx"])
+file_base_globale = st.sidebar.file_uploader("Base globale projet", type=["csv","xlsx"])
+
 st.title("Dashboard Marketplace & Incubateur")
 
 # -----------------------------
-# Fonction de lecture sécurisée
+# Lecture sécurisée
 # -----------------------------
 def read_file_safe(uploaded_file, expected_columns=None):
     if uploaded_file is None or uploaded_file.size == 0:
@@ -160,15 +166,6 @@ def read_file_safe(uploaded_file, expected_columns=None):
     return df
 
 # -----------------------------
-# Upload des fichiers
-# -----------------------------
-st.sidebar.header("Uploader les fichiers")
-file_users = st.sidebar.file_uploader("Noms persos", type=["csv","xlsx"])
-file_entreprises = st.sidebar.file_uploader("Entreprises données", type=["csv","xlsx"])
-file_mises_relation = st.sidebar.file_uploader("Historique des mises en relation", type=["csv","xlsx"])
-file_base_globale = st.sidebar.file_uploader("Base globale projet", type=["csv","xlsx"])
-
-# -----------------------------
 # Colonnes attendues
 # -----------------------------
 cols_users = ["#Id", "Prénom", "Nom", "Inscrit depuis le", "Statut", "ID Unique", "Date de dernière connexion"]
@@ -183,7 +180,7 @@ cols_globale = ["Name","Nom","Projet","CAR/SUM (territorial)","Incubateur territ
                 "Partenaires Marketplace","Date dernière connexion Le Club"]
 
 # -----------------------------
-# Lecture sécurisée
+# Lecture fichiers
 # -----------------------------
 df_users = read_file_safe(file_users, expected_columns=cols_users)
 df_entreprises = read_file_safe(file_entreprises, expected_columns=cols_entreprises)
@@ -191,50 +188,38 @@ df_mises = read_file_safe(file_mises_relation, expected_columns=cols_mises)
 df_globale = read_file_safe(file_base_globale, expected_columns=cols_globale)
 
 # -----------------------------
-# Dashboard si fichiers OK
+# Dashboard principal
 # -----------------------------
 if not df_users.empty and not df_entreprises.empty and not df_mises.empty and not df_globale.empty:
 
-    # --- Datas globales ---
-    st.header("Datas globales")
-    demandes_total = len(df_mises)
-    profils_total = len(df_users)
     today = datetime.today()
     month_ago = today - timedelta(days=30)
     df_users["Date de dernière connexion"] = pd.to_datetime(df_users["Date de dernière connexion"], dayfirst=True, errors="coerce")
-    profils_connectes = df_users[df_users["Date de dernière connexion"] >= month_ago].shape[0]
 
-    st.metric("Demandes de mise en relation", demandes_total)
-    st.metric("Profils créés", profils_total)
-    st.metric("Profils connectés sur le mois", profils_connectes)
+    # --- Datas globales ---
+    st.header("Datas globales")
+    st.metric("Demandes de mise en relation", len(df_mises))
+    st.metric("Profils créés", len(df_users))
+    st.metric("Profils connectés sur le mois", df_users[df_users["Date de dernière connexion"] >= month_ago].shape[0])
 
     # --- Marketplace ---
     st.header("Marketplace")
-    go_between_valides = (df_mises["Go between validé"] == "Oui").sum()
-    rdv_realises = df_mises["RDV réalisés"].sum()
-    rdv_non_realises = df_mises["Rdv non réalisé"].sum()
-
-    st.metric("Go Between validés", go_between_valides)
-    st.metric("RDV réalisés", rdv_realises)
-    st.metric("RDV non réalisés", rdv_non_realises)
-
+    st.metric("Go Between validés", (df_mises["Go between validé"] == "Oui").sum())
+    st.metric("RDV réalisés", df_mises["RDV réalisés"].sum())
+    st.metric("RDV non réalisés", df_mises["Rdv non réalisé"].sum())
     st.table(df_mises["Statut des mises en relation à date"].value_counts())
 
-    taux_go_between = pd.to_numeric(df_mises["Taux de conversion goBetween"], errors="coerce").mean()
-    taux_rdv = pd.to_numeric(df_mises["Taux de conversion RDV réalisé"], errors="coerce").mean()
-    st.metric("Taux de conversion Go Between (%)", round(taux_go_between, 2))
-    st.metric("Taux de conversion RDV réalisés (%)", round(taux_rdv, 2))
+    st.metric("Taux de conversion Go Between (%)", round(pd.to_numeric(df_mises["Taux de conversion goBetween"], errors="coerce").mean(), 2))
+    st.metric("Taux de conversion RDV réalisés (%)", round(pd.to_numeric(df_mises["Taux de conversion RDV réalisé"], errors="coerce").mean(), 2))
 
     df_mises["Dates simples"] = pd.to_datetime(df_mises["Dates simples"], format="%Y-%m", errors="coerce")
     df_mises["Trimestre"] = df_mises["Dates simples"].dt.to_period("Q")
-    trimestriel = df_mises.groupby("Trimestre").size()
-    st.table(trimestriel)
+    st.table(df_mises.groupby("Trimestre").size())
 
     # --- Profils persos & Sociétés ---
     st.header("Profils persos & Sociétés")
     st.metric("Nombre total d'entrepreneurs", len(df_globale))
     st.metric("Total profils persos", len(df_users))
-
     st.table(df_users["Statut"].value_counts())
     st.table(df_entreprises["Statut"].value_counts())
 
@@ -248,14 +233,13 @@ if not df_users.empty and not df_entreprises.empty and not df_mises.empty and no
         doc = Document()
         doc.add_heading("Dashboard Marketplace & Incubateur - Extract", 0)
         try:
-            doc.add_picture("logo1.png", width=None)
+            doc.add_picture("logo1.png")
         except:
             pass
-        doc.add_paragraph(f"Généré le {datetime.today().strftime('%d/%m/%Y')}")
+        doc.add_paragraph(f"Généré le {today.strftime('%d/%m/%Y')}")
         doc.add_paragraph(f"Demandes de mise en relation: {len(df_mises)}")
         doc.add_paragraph(f"Profils créés: {len(df_users)}")
         doc.add_paragraph(f"Profils connectés sur le mois: {df_users[df_users['Date de dernière connexion'] >= month_ago].shape[0]}")
-
         stream = io.BytesIO()
         doc.save(stream)
         stream.seek(0)
@@ -265,7 +249,7 @@ if not df_users.empty and not df_entreprises.empty and not df_mises.empty and no
     st.download_button(
         label="Télécharger l'extract en DOCX",
         data=docx_data,
-        file_name=f"dashboard_extract_{datetime.today().strftime('%Y%m%d')}.docx",
+        file_name=f"dashboard_extract_{today.strftime('%Y%m%d')}.docx",
         mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
     )
 

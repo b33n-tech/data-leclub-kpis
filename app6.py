@@ -151,23 +151,34 @@ with st.spinner("Chargement du dashboard..."):
 
         # --- Datas globales ---
         st.header("Datas globales")
-        st.metric("Demandes de mise en relation", len(df_mises))
-        st.metric("Profils créés", len(df_users))
-        st.metric("Profils connectés sur le mois", df_users[df_users["Date de dernière connexion"] >= month_ago].shape[0])
+        demandes_total = len(df_mises)
+        profils_total = len(df_users)
+        profils_connectes = df_users[df_users["Date de dernière connexion"] >= month_ago].shape[0]
+
+        st.metric("Demandes de mise en relation", demandes_total)
+        st.metric("Profils créés", profils_total)
+        st.metric("Profils connectés sur le mois", profils_connectes)
 
         # --- Marketplace ---
         st.header("Marketplace")
-        st.metric("Go Between validés", (df_mises["Go between validé"] == "Oui").sum())
-        st.metric("RDV réalisés", df_mises["RDV réalisés"].sum())
-        st.metric("RDV non réalisés", df_mises["Rdv non réalisé"].sum())
-        st.table(df_mises["Statut des mises en relation à date"].value_counts())
+        go_between_valides = (df_mises["Go between validé"] == "Oui").sum()
+        rdv_realises = df_mises["RDV réalisés"].sum()
+        rdv_non_realises = df_mises["Rdv non réalisé"].sum()
+        taux_go_between = round(pd.to_numeric(df_mises["Taux de conversion goBetween"], errors="coerce").mean(), 2)
+        taux_rdv = round(pd.to_numeric(df_mises["Taux de conversion RDV réalisé"], errors="coerce").mean(), 2)
 
-        st.metric("Taux de conversion Go Between (%)", round(pd.to_numeric(df_mises["Taux de conversion goBetween"], errors="coerce").mean(), 2))
-        st.metric("Taux de conversion RDV réalisés (%)", round(pd.to_numeric(df_mises["Taux de conversion RDV réalisé"], errors="coerce").mean(), 2))
+        st.metric("Go Between validés", go_between_valides)
+        st.metric("RDV réalisés", rdv_realises)
+        st.metric("RDV non réalisés", rdv_non_realises)
+        st.metric("Taux de conversion Go Between (%)", taux_go_between)
+        st.metric("Taux de conversion RDV réalisés (%)", taux_rdv)
 
+        # Totaux trimestriels
         df_mises["Dates simples"] = pd.to_datetime(df_mises["Dates simples"], format="%Y-%m", errors="coerce")
         df_mises["Trimestre"] = df_mises["Dates simples"].dt.to_period("Q")
-        st.table(df_mises.groupby("Trimestre").size())
+        trimestriel = df_mises.groupby("Trimestre").size()
+        st.header("Totaux trimestriels")
+        st.table(trimestriel)
 
         # --- Profils persos & Sociétés ---
         st.header("Profils persos & Sociétés")
@@ -181,39 +192,48 @@ with st.spinner("Chargement du dashboard..."):
         st.table(df_globale["Profil personnel Le Club"].value_counts())
         st.table(df_globale["Profil sociétés Le Club"].value_counts())
 
-        # --- Génération DOCX complète ---
+        # --- Génération DOCX simplifiée (datas finales uniquement) ---
         def generate_docx_metrics(df_users, df_entreprises, df_mises, df_globale):
             doc = Document()
             doc.add_heading("Dashboard Marketplace & Incubateur - Extract", 0)
-            
+
             # Logo
             try:
                 doc.add_picture("logo1.png")
             except:
                 pass
 
+            today = datetime.today()
+            month_ago = today - timedelta(days=30)
             doc.add_paragraph(f"Généré le {today.strftime('%d/%m/%Y')}")
+
+            # Datas globales
             doc.add_paragraph(f"Demandes de mise en relation: {len(df_mises)}")
             doc.add_paragraph(f"Profils créés: {len(df_users)}")
             doc.add_paragraph(f"Profils connectés sur le mois: {df_users[df_users['Date de dernière connexion'] >= month_ago].shape[0]}")
 
-            # Fonction pour ajouter un dataframe en tableau Word
-            def add_df_table(df, title):
-                doc.add_heading(title, level=1)
-                table = doc.add_table(rows=1, cols=len(df.columns))
-                hdr_cells = table.rows[0].cells
-                for i, col in enumerate(df.columns):
-                    hdr_cells[i].text = str(col)
-                for _, row in df.iterrows():
-                    row_cells = table.add_row().cells
-                    for i, col in enumerate(df.columns):
-                        row_cells[i].text = str(row[col])
-            
-            add_df_table(df_users, "Users")
-            add_df_table(df_entreprises, "Entreprises")
-            add_df_table(df_mises, "Mises en relation")
-            add_df_table(df_globale, "Base Globale")
+            # Marketplace
+            go_between_valides = (df_mises["Go between validé"] == "Oui").sum()
+            rdv_realises = df_mises["RDV réalisés"].sum()
+            rdv_non_realises = df_mises["Rdv non réalisé"].sum()
+            taux_go_between = round(pd.to_numeric(df_mises["Taux de conversion goBetween"], errors="coerce").mean(), 2)
+            taux_rdv = round(pd.to_numeric(df_mises["Taux de conversion RDV réalisé"], errors="coerce").mean(), 2)
 
+            doc.add_paragraph(f"Go Between validés: {go_between_valides}")
+            doc.add_paragraph(f"RDV réalisés: {rdv_realises}")
+            doc.add_paragraph(f"RDV non réalisés: {rdv_non_realises}")
+            doc.add_paragraph(f"Taux de conversion Go Between (%): {taux_go_between}")
+            doc.add_paragraph(f"Taux de conversion RDV réalisés (%): {taux_rdv}")
+
+            # Totaux trimestriels
+            df_mises["Dates simples"] = pd.to_datetime(df_mises["Dates simples"], format="%Y-%m", errors="coerce")
+            df_mises["Trimestre"] = df_mises["Dates simples"].dt.to_period("Q")
+            trimestriel = df_mises.groupby("Trimestre").size()
+            doc.add_heading("Totaux trimestriels", level=1)
+            for trimestre, total in trimestriel.items():
+                doc.add_paragraph(f"{trimestre}: {total}")
+
+            # Sauvegarde DOCX
             stream = io.BytesIO()
             doc.save(stream)
             stream.seek(0)
@@ -221,7 +241,7 @@ with st.spinner("Chargement du dashboard..."):
 
         docx_data = generate_docx_metrics(df_users, df_entreprises, df_mises, df_globale)
         st.download_button(
-            label="Télécharger l'extract complet en DOCX",
+            label="Télécharger l'extract final en DOCX",
             data=docx_data,
             file_name=f"dashboard_extract_{today.strftime('%Y%m%d')}.docx",
             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"

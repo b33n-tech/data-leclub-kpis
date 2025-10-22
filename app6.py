@@ -108,7 +108,6 @@ st.sidebar.image("logo1.png", use_container_width=True)
 st.sidebar.markdown("<br>", unsafe_allow_html=True)
 st.sidebar.image("logo2.png", use_container_width=True)
 
-st.image("logo2.png", width=200)
 st.title("Dashboard Marketplace & Incubateur")
 
 # --- Fonction utilitaire ---

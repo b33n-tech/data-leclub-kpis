@@ -14,17 +14,14 @@ st.markdown("""
     color: white;
     font-family: 'Inter', sans-serif;
 }
-
 h1, h2, h3 {
     color: #3ecdd1;
     font-weight: 600;
 }
-
 section[data-testid="stSidebar"] {
     background-color: #232f3c;
     color: white;
 }
-
 .stButton > button {
     background-color: #3ecdd1;
     color: #1d2732;
@@ -38,7 +35,6 @@ section[data-testid="stSidebar"] {
     background-color: #35b9c1;
     color: white;
 }
-
 .stMetric {
     background-color: #232f3c;
     border-radius: 8px;
@@ -47,13 +43,11 @@ section[data-testid="stSidebar"] {
 .stMetric label {
     color: #3ecdd1 !important;
 }
-
 .stTable {
     background-color: #232f3c;
     border-radius: 8px;
     padding: 0.5em;
 }
-
 hr {
     border: none;
     border-top: 1px solid #3ecdd1;
@@ -192,7 +186,7 @@ with st.spinner("Chargement du dashboard..."):
         st.table(df_globale["Profil personnel Le Club"].value_counts())
         st.table(df_globale["Profil sociétés Le Club"].value_counts())
 
-        # --- Génération DOCX simplifiée (datas finales uniquement) ---
+        # --- Génération DOCX avec toutes les métriques finales ---
         def generate_docx_metrics(df_users, df_entreprises, df_mises, df_globale):
             doc = Document()
             doc.add_heading("Dashboard Marketplace & Incubateur - Extract", 0)
@@ -207,12 +201,14 @@ with st.spinner("Chargement du dashboard..."):
             month_ago = today - timedelta(days=30)
             doc.add_paragraph(f"Généré le {today.strftime('%d/%m/%Y')}")
 
-            # Datas globales
+            # --- Datas globales ---
+            doc.add_heading("Datas globales", level=1)
             doc.add_paragraph(f"Demandes de mise en relation: {len(df_mises)}")
             doc.add_paragraph(f"Profils créés: {len(df_users)}")
             doc.add_paragraph(f"Profils connectés sur le mois: {df_users[df_users['Date de dernière connexion'] >= month_ago].shape[0]}")
 
-            # Marketplace
+            # --- Marketplace ---
+            doc.add_heading("Marketplace", level=1)
             go_between_valides = (df_mises["Go between validé"] == "Oui").sum()
             rdv_realises = df_mises["RDV réalisés"].sum()
             rdv_non_realises = df_mises["Rdv non réalisé"].sum()
@@ -232,6 +228,17 @@ with st.spinner("Chargement du dashboard..."):
             doc.add_heading("Totaux trimestriels", level=1)
             for trimestre, total in trimestriel.items():
                 doc.add_paragraph(f"{trimestre}: {total}")
+
+            # --- Synthèse tableaux value_counts ---
+            def add_value_counts_to_doc(series, title):
+                doc.add_heading(title, level=1)
+                for idx, count in series.items():
+                    doc.add_paragraph(f"{idx}: {count}")
+
+            add_value_counts_to_doc(df_users["Statut"].value_counts(), "Statut des utilisateurs")
+            add_value_counts_to_doc(df_entreprises["Statut"].value_counts(), "Statut des entreprises")
+            add_value_counts_to_doc(df_globale["Profil personnel Le Club"].value_counts(), "Profil personnel Le Club")
+            add_value_counts_to_doc(df_globale["Profil sociétés Le Club"].value_counts(), "Profil sociétés Le Club")
 
             # Sauvegarde DOCX
             stream = io.BytesIO()

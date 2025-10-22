@@ -5,51 +5,6 @@ import io
 from docx import Document
 
 # -----------------------------
-# Loader Splash (non intrusif)
-# -----------------------------
-st.markdown("""
-<style>
-#loader {
-    position: fixed;
-    width: 100%;
-    height: 100%;
-    background-color: #1d2732;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    z-index: 9999;
-    transition: opacity 0.5s ease;
-}
-
-#loader img {
-    width: 200px;
-    display: block;
-    margin: 0 auto;
-    animation: fadeIn 1.5s ease-in-out forwards;
-}
-
-@keyframes fadeIn {
-    from {opacity: 0;}
-    to {opacity: 1;}
-}
-</style>
-
-<div id="loader">
-    <img src="logo1.png">
-</div>
-
-<script>
-window.addEventListener('load', () => {
-    setTimeout(() => { 
-        const loader = document.getElementById('loader');
-        loader.style.opacity = 0;
-        setTimeout(() => loader.remove(), 500);
-    }, 2500);
-});
-</script>
-""", unsafe_allow_html=True)
-
-# -----------------------------
 # Thème global
 # -----------------------------
 st.markdown("""
@@ -180,78 +135,76 @@ cols_globale = ["Name","Nom","Projet","CAR/SUM (territorial)","Incubateur territ
                 "Partenaires Marketplace","Date dernière connexion Le Club"]
 
 # -----------------------------
-# Lecture fichiers
+# Dashboard principal avec spinner
 # -----------------------------
-df_users = read_file_safe(file_users, expected_columns=cols_users)
-df_entreprises = read_file_safe(file_entreprises, expected_columns=cols_entreprises)
-df_mises = read_file_safe(file_mises_relation, expected_columns=cols_mises)
-df_globale = read_file_safe(file_base_globale, expected_columns=cols_globale)
+with st.spinner("Chargement du dashboard..."):
+    df_users = read_file_safe(file_users, expected_columns=cols_users)
+    df_entreprises = read_file_safe(file_entreprises, expected_columns=cols_entreprises)
+    df_mises = read_file_safe(file_mises_relation, expected_columns=cols_mises)
+    df_globale = read_file_safe(file_base_globale, expected_columns=cols_globale)
 
-# -----------------------------
-# Dashboard principal
-# -----------------------------
-if not df_users.empty and not df_entreprises.empty and not df_mises.empty and not df_globale.empty:
+    if not df_users.empty and not df_entreprises.empty and not df_mises.empty and not df_globale.empty:
 
-    today = datetime.today()
-    month_ago = today - timedelta(days=30)
-    df_users["Date de dernière connexion"] = pd.to_datetime(df_users["Date de dernière connexion"], dayfirst=True, errors="coerce")
+        today = datetime.today()
+        month_ago = today - timedelta(days=30)
+        df_users["Date de dernière connexion"] = pd.to_datetime(df_users["Date de dernière connexion"], dayfirst=True, errors="coerce")
 
-    # --- Datas globales ---
-    st.header("Datas globales")
-    st.metric("Demandes de mise en relation", len(df_mises))
-    st.metric("Profils créés", len(df_users))
-    st.metric("Profils connectés sur le mois", df_users[df_users["Date de dernière connexion"] >= month_ago].shape[0])
+        # --- Datas globales ---
+        st.header("Datas globales")
+        st.metric("Demandes de mise en relation", len(df_mises))
+        st.metric("Profils créés", len(df_users))
+        st.metric("Profils connectés sur le mois", df_users[df_users["Date de dernière connexion"] >= month_ago].shape[0])
 
-    # --- Marketplace ---
-    st.header("Marketplace")
-    st.metric("Go Between validés", (df_mises["Go between validé"] == "Oui").sum())
-    st.metric("RDV réalisés", df_mises["RDV réalisés"].sum())
-    st.metric("RDV non réalisés", df_mises["Rdv non réalisé"].sum())
-    st.table(df_mises["Statut des mises en relation à date"].value_counts())
+        # --- Marketplace ---
+        st.header("Marketplace")
+        st.metric("Go Between validés", (df_mises["Go between validé"] == "Oui").sum())
+        st.metric("RDV réalisés", df_mises["RDV réalisés"].sum())
+        st.metric("RDV non réalisés", df_mises["Rdv non réalisé"].sum())
+        st.table(df_mises["Statut des mises en relation à date"].value_counts())
 
-    st.metric("Taux de conversion Go Between (%)", round(pd.to_numeric(df_mises["Taux de conversion goBetween"], errors="coerce").mean(), 2))
-    st.metric("Taux de conversion RDV réalisés (%)", round(pd.to_numeric(df_mises["Taux de conversion RDV réalisé"], errors="coerce").mean(), 2))
+        st.metric("Taux de conversion Go Between (%)", round(pd.to_numeric(df_mises["Taux de conversion goBetween"], errors="coerce").mean(), 2))
+        st.metric("Taux de conversion RDV réalisés (%)", round(pd.to_numeric(df_mises["Taux de conversion RDV réalisé"], errors="coerce").mean(), 2))
 
-    df_mises["Dates simples"] = pd.to_datetime(df_mises["Dates simples"], format="%Y-%m", errors="coerce")
-    df_mises["Trimestre"] = df_mises["Dates simples"].dt.to_period("Q")
-    st.table(df_mises.groupby("Trimestre").size())
+        df_mises["Dates simples"] = pd.to_datetime(df_mises["Dates simples"], format="%Y-%m", errors="coerce")
+        df_mises["Trimestre"] = df_mises["Dates simples"].dt.to_period("Q")
+        st.table(df_mises.groupby("Trimestre").size())
 
-    # --- Profils persos & Sociétés ---
-    st.header("Profils persos & Sociétés")
-    st.metric("Nombre total d'entrepreneurs", len(df_globale))
-    st.metric("Total profils persos", len(df_users))
-    st.table(df_users["Statut"].value_counts())
-    st.table(df_entreprises["Statut"].value_counts())
+        # --- Profils persos & Sociétés ---
+        st.header("Profils persos & Sociétés")
+        st.metric("Nombre total d'entrepreneurs", len(df_globale))
+        st.metric("Total profils persos", len(df_users))
+        st.table(df_users["Statut"].value_counts())
+        st.table(df_entreprises["Statut"].value_counts())
 
-    # --- Complétion des profils ---
-    st.header("Complétion des profils")
-    st.table(df_globale["Profil personnel Le Club"].value_counts())
-    st.table(df_globale["Profil sociétés Le Club"].value_counts())
+        # --- Complétion des profils ---
+        st.header("Complétion des profils")
+        st.table(df_globale["Profil personnel Le Club"].value_counts())
+        st.table(df_globale["Profil sociétés Le Club"].value_counts())
 
-    # --- Génération DOCX ---
-    def generate_docx_metrics(df_users, df_entreprises, df_mises, df_globale):
-        doc = Document()
-        doc.add_heading("Dashboard Marketplace & Incubateur - Extract", 0)
-        try:
-            doc.add_picture("logo1.png")
-        except:
-            pass
-        doc.add_paragraph(f"Généré le {today.strftime('%d/%m/%Y')}")
-        doc.add_paragraph(f"Demandes de mise en relation: {len(df_mises)}")
-        doc.add_paragraph(f"Profils créés: {len(df_users)}")
-        doc.add_paragraph(f"Profils connectés sur le mois: {df_users[df_users['Date de dernière connexion'] >= month_ago].shape[0]}")
-        stream = io.BytesIO()
-        doc.save(stream)
-        stream.seek(0)
-        return stream
+        # --- Génération DOCX ---
+        def generate_docx_metrics(df_users, df_entreprises, df_mises, df_globale):
+            doc = Document()
+            doc.add_heading("Dashboard Marketplace & Incubateur - Extract", 0)
+            try:
+                doc.add_picture("logo1.png")
+            except:
+                pass
+            doc.add_paragraph(f"Généré le {today.strftime('%d/%m/%Y')}")
+            doc.add_paragraph(f"Demandes de mise en relation: {len(df_mises)}")
+            doc.add_paragraph(f"Profils créés: {len(df_users)}")
+            doc.add_paragraph(f"Profils connectés sur le mois: {df_users[df_users['Date de dernière connexion'] >= month_ago].shape[0]}")
+            stream = io.BytesIO()
+            doc.save(stream)
+            stream.seek(0)
+            return stream
 
-    docx_data = generate_docx_metrics(df_users, df_entreprises, df_mises, df_globale)
-    st.download_button(
-        label="Télécharger l'extract en DOCX",
-        data=docx_data,
-        file_name=f"dashboard_extract_{today.strftime('%Y%m%d')}.docx",
-        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-    )
+        docx_data = generate_docx_metrics(df_users, df_entreprises, df_mises, df_globale)
+        st.download_button(
+            label="Télécharger l'extract en DOCX",
+            data=docx_data,
+            file_name=f"dashboard_extract_{today.strftime('%Y%m%d')}.docx",
+            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        )
 
-else:
-    st.info("Veuillez uploader tous les fichiers pour générer le dashboard.")
+    else:
+        st.info("Veuillez uploader tous les fichiers pour générer le dashboard.")

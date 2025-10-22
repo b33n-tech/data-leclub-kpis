@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 import io
 from docx import Document
 
-# --- Splash Screen simplifié (logo centré, fade-in) ---
+# --- Splash Screen simplifié (logo centré, fade-in, sans texte) ---
 st.markdown("""
     <style>
     /* Écran de chargement plein écran */
@@ -21,6 +21,8 @@ st.markdown("""
 
     #loader img {
         width: 200px;
+        display: block;
+        margin: 0 auto;
         animation: fadeIn 1.5s ease-in-out forwards;
     }
 
@@ -31,7 +33,7 @@ st.markdown("""
     </style>
 
     <div id="loader">
-        <img src="logo1.png" alt="Logo Quest for Change">
+        <img src="logo1.png">
     </div>
 
     <script>
@@ -44,7 +46,7 @@ st.markdown("""
     </script>
 """, unsafe_allow_html=True)
 
-# --- Thème global (sobre et corporate) ---
+# --- Thème global ---
 st.markdown("""
     <style>
     .stApp {
@@ -174,7 +176,7 @@ df_entreprises = read_file_safe(file_entreprises, expected_columns=cols_entrepri
 df_mises = read_file_safe(file_mises_relation, expected_columns=cols_mises)
 df_globale = read_file_safe(file_base_globale, expected_columns=cols_globale)
 
-# --- Vérification ---
+# --- Vérification fichiers ---
 if not df_users.empty and not df_entreprises.empty and not df_mises.empty and not df_globale.empty:
 
     # --- Datas globales ---
@@ -225,16 +227,14 @@ if not df_users.empty and not df_entreprises.empty and not df_mises.empty and no
     st.table(df_globale["Profil personnel Le Club"].value_counts())
     st.table(df_globale["Profil sociétés Le Club"].value_counts())
 
-    # --- DOCX Generation ---
+    # --- Génération DOCX ---
     def generate_docx_metrics(df_users, df_entreprises, df_mises, df_globale):
         doc = Document()
         doc.add_heading("Dashboard Marketplace & Incubateur - Extract", 0)
-
         try:
             doc.add_picture("logo1.png", width=None)
         except:
             pass
-
         doc.add_paragraph(f"Généré le {datetime.today().strftime('%d/%m/%Y')}")
         doc.add_paragraph(f"Demandes de mise en relation: {len(df_mises)}")
         doc.add_paragraph(f"Profils créés: {len(df_users)}")
